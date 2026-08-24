@@ -1,4 +1,4 @@
-# Ascend Training
+# Skido - Your workout partner
 
 Build a polished, minimalist workout tracking web app based EXACTLY on the attached workout-plan.md file.
 
