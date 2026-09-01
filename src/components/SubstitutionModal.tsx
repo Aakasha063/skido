@@ -131,7 +131,8 @@ export function SubstitutionModal({
         alignItems: "center",
         justifyContent: "center",
         zIndex: 9999,
-        padding: 16,
+        padding: "12px 10px",
+        boxSizing: "border-box",
       }}
       onClick={onClose}
     >
@@ -139,22 +140,23 @@ export function SubstitutionModal({
         style={{
           background: "oklch(0.12 0.005 250)",
           border: "1px solid oklch(0.27 0.005 250)",
-          borderRadius: 16,
+          borderRadius: 14,
           width: "100%",
-          maxWidth: 520,
-          maxHeight: "85vh",
+          maxWidth: 500,
+          maxHeight: "88vh",
           display: "flex",
           flexDirection: "column",
           boxShadow: "0 16px 40px rgba(0,0,0,0.6)",
+          boxSizing: "border-box",
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ padding: "20px 20px 14px", borderBottom: "1px solid oklch(0.22 0.005 250)" }}>
+        <div style={{ padding: "16px 14px 12px", borderBottom: "1px solid oklch(0.22 0.005 250)" }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Replace Exercise</h2>
-              <p style={{ margin: "4px 0 0", fontSize: 13, color: "oklch(0.63 0.006 250)" }}>
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Replace Exercise</h2>
+              <p style={{ margin: "3px 0 0", fontSize: 12, color: "oklch(0.63 0.006 250)" }}>
                 Replacing <strong>{originalExerciseName}</strong> ({muscleGroupLabel})
               </p>
             </div>
