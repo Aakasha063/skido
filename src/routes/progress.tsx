@@ -7,7 +7,7 @@ import { Heatmap, type WorkoutActivity } from "@/components/Heatmap";
 import { BodyMap } from "@/components/BodyMap";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchBodyMetrics, fetchExerciseHistory, fetchExercises, fetchPRs } from "@/lib/api";
+import { fetchBodyMetrics, fetchExerciseHistory, fetchExercises, fetchHistory, fetchPRs } from "@/lib/api";
 import { epley1RM } from "@/lib/format";
 
 export const Route = createFileRoute("/progress")({
@@ -53,36 +53,28 @@ function ProgressPage() {
     queryFn: () => fetchExerciseHistory(user!.id, exerciseId),
     enabled: !!user && !!exerciseId,
   });
-
-  const { data: userSessions } = useQuery({
-    queryKey: ["user-sessions-heatmap", user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("workout_sessions")
-        .select("id, started_at, ended_at, total_volume_kg, workout_days(name)")
-        .eq("user_id", user!.id)
-        .eq("state", "completed")
-        .order("started_at", { ascending: true });
-      if (error) throw error;
-      return data;
-    },
+  const { data: history } = useQuery({
+    queryKey: ["history", user?.id],
+    queryFn: () => fetchHistory(user!.id),
     enabled: !!user,
   });
 
   const heatmapActivities: WorkoutActivity[] = useMemo(() => {
-    return (userSessions ?? []).map((s) => {
-      const date = (s.started_at || "").slice(0, 10);
-      const start = s.started_at ? new Date(s.started_at).getTime() : 0;
-      const end = s.ended_at ? new Date(s.ended_at).getTime() : start + 45 * 60000;
-      const minutes = Math.max(15, Math.round((end - start) / 60000));
-      return {
-        date,
-        minutes,
-        volumeKg: s.total_volume_kg || 0,
-        workoutName: (s.workout_days as any)?.name || "Workout",
-      };
-    });
-  }, [userSessions]);
+    return (history ?? [])
+      .filter((s) => s.status === "completed")
+      .map((s) => {
+        const date = (s.session_date || s.started_at || "").slice(0, 10);
+        const start = s.started_at ? new Date(s.started_at).getTime() : 0;
+        const end = s.ended_at ? new Date(s.ended_at).getTime() : start + 45 * 60000;
+        const minutes = Math.max(15, Math.round((end - start) / 60000));
+        return {
+          date,
+          minutes,
+          volumeKg: s.total_volume_kg || 0,
+          workoutName: s.title || "Workout",
+        };
+      });
+  }, [history]);
 
   const strength = useMemo(() => {
     return Object.values(
