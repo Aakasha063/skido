@@ -37,7 +37,8 @@ INSERT INTO public.muscle_groups (id, name, body_region, parent_id) VALUES
   ('abs',         'Rectus Abdominis',          'core',       NULL),
   ('obliques',    'Obliques',                  'core',       NULL),
   -- Cardio / systemic
-  ('cardiovascular','Cardiovascular System',  'cardio',     NULL);
+  ('cardiovascular','Cardiovascular System',  'cardio',     NULL)
+ON CONFLICT (id) DO NOTHING;
 
 -- ── movement_patterns ──────────────────────────────────────────────────────────
 INSERT INTO public.movement_patterns (id, name, description) VALUES
@@ -59,7 +60,8 @@ INSERT INTO public.movement_patterns (id, name, description) VALUES
   ('core-flexion',                'Core Flexion',               'Spine or pelvis flexion under load — crunch, hanging leg raise'),
   ('wrist-flexion',               'Wrist Flexion',              'Forearm curl — flexes wrist'),
   ('wrist-extension',             'Wrist Extension',            'Reverse wrist curl — extends wrist'),
-  ('locomotion',                  'Locomotion / Cardio',        'Walking, running, cycling, rowing — steady-state cardiovascular work');
+  ('locomotion',                  'Locomotion / Cardio',        'Walking, running, cycling, rowing — steady-state cardiovascular work')
+ON CONFLICT (id) DO NOTHING;
 
 -- ── equipment_items ────────────────────────────────────────────────────────────
 INSERT INTO public.equipment_items (id, name, category) VALUES
@@ -79,4 +81,5 @@ INSERT INTO public.equipment_items (id, name, category) VALUES
   ('dip-bars',       'Dip Bars / Station',      'bodyweight'),
   ('preacher-bench', 'Preacher Curl Bench',     'accessory'),
   ('resistance-band','Resistance Band',         'free-weights'),
-  ('weight-belt',    'Dipping Belt / Weight Belt','accessory');
+  ('weight-belt',    'Dipping Belt / Weight Belt','accessory')
+ON CONFLICT (id) DO NOTHING;
