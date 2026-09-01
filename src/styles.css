@@ -321,13 +321,13 @@ body {
 .builder-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 16px;
+  gap: 20px;
   width: 100%;
 }
 
 @media (min-width: 960px) {
   .builder-grid {
-    grid-template-columns: minmax(360px, 1fr) minmax(380px, 440px);
+    grid-template-columns: minmax(380px, 1.2fr) minmax(360px, 1fr);
     gap: 24px;
   }
 }
@@ -336,13 +336,4 @@ body {
 .builder-lib-panel {
   width: 100%;
   box-sizing: border-box;
-}
-
-@media (max-width: 959px) {
-  .builder-grid[data-tab="day"] .builder-lib-panel {
-    display: none !important;
-  }
-  .builder-grid[data-tab="library"] .builder-day-panel {
-    display: none !important;
-  }
 }

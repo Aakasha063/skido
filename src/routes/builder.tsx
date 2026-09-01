@@ -64,7 +64,7 @@ function BuilderPage() {
   );
 
   const [activeDayIdx, setActiveDayIdx] = useState(0);
-  const [mobileTab, setMobileTab] = useState<"day" | "library">("day");
+  const [mobileModalOpen, setMobileModalOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedMuscle, setSelectedMuscle] = useState<string>("All");
   const [selectedBodySlug, setSelectedBodySlug] = useState<MuscleSlug | null>(null);
@@ -118,7 +118,10 @@ function BuilderPage() {
   const existingCustom = currentDays?.find((d) => d.is_custom);
 
   async function handleSave() {
-    if (!user) return;
+    if (!user) {
+      toast.error("Please sign in to save your custom workout plan");
+      return;
+    }
 
     const payload: CustomDayInput[] = daysState.map((d) => ({
       dayOfWeek: d.dayOfWeek,
@@ -142,11 +145,11 @@ function BuilderPage() {
     setIsSaving(true);
     try {
       await createCustomPlan(user.id, activePayload);
-      toast.success("Custom plan saved!");
+      toast.success("Custom plan saved successfully!");
       await refetch();
       navigate({ to: "/plan" });
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(e.message || "Failed to save custom plan");
     } finally {
       setIsSaving(false);
     }
@@ -221,6 +224,280 @@ function BuilderPage() {
 
   const activeDay = daysState[activeDayIdx] || daysState[0]!;
 
+  // Render the Exercise Library UI component
+  function renderExerciseLibrary(isModal = false) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          width: "100%",
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "white" }}>
+              Add to {DAY_LABELS[activeDayIdx]}
+            </h3>
+            <p style={{ margin: "2px 0 0", fontSize: 11.5, color: "oklch(0.6 0.01 250)" }}>
+              {activeDay.exercises.length} exercise{activeDay.exercises.length === 1 ? "" : "s"} in workout
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <button
+              onClick={() => setShowBodyMap((v) => !v)}
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "5px 9px",
+                borderRadius: 6,
+                border: "1px solid oklch(0.25 0.01 250)",
+                background: showBodyMap ? "oklch(0.92 0.25 110 / 15%)" : "oklch(0.16 0.005 250)",
+                color: showBodyMap ? "oklch(0.92 0.25 110)" : "oklch(0.75 0.01 250)",
+                cursor: "pointer",
+              }}
+            >
+              {showBodyMap ? "Hide Model" : "🧍 Muscle Model"}
+            </button>
+
+            {isModal && (
+              <button
+                onClick={() => setMobileModalOpen(false)}
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  padding: "5px 12px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: "oklch(0.92 0.25 110)",
+                  color: "oklch(0.07 0.01 110)",
+                  cursor: "pointer",
+                }}
+              >
+                Done ✓
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Current Workout Quick Summary Pills inside modal so user always sees what's added */}
+        {activeDay.exercises.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              gap: 4,
+              overflowX: "auto",
+              padding: "6px 8px",
+              background: "oklch(0.09 0.004 250)",
+              borderRadius: 8,
+              border: "1px solid oklch(0.2 0.005 250)",
+              scrollbarWidth: "none",
+            }}
+          >
+            {activeDay.exercises.map((ex, i) => (
+              <span
+                key={`${ex.exerciseId}-${i}`}
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  color: "oklch(0.92 0.25 110)",
+                  background: "oklch(0.18 0.01 250)",
+                  padding: "2px 7px",
+                  borderRadius: 4,
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                {i + 1}. {ex.name}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Interactive Anatomical Body Map */}
+        {showBodyMap && (
+          <div style={{ marginBottom: 6, width: "100%" }}>
+            <BodyMap
+              size="sm"
+              selectedMuscle={selectedBodySlug}
+              onSelectMuscle={(slug, name) => {
+                setSelectedBodySlug(slug);
+                const mapped = BODY_MAP_TO_SEARCH_TERMS[slug] || name;
+                setSelectedMuscle(mapped);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Muscle Filter Chips */}
+        <div
+          style={{
+            display: "flex",
+            gap: 5,
+            overflowX: "auto",
+            paddingBottom: 4,
+            WebkitOverflowScrolling: "touch",
+            scrollbarWidth: "none",
+            width: "100%",
+          }}
+        >
+          {MUSCLE_FILTER_CHIPS.map((m) => {
+            const isCurrent = selectedMuscle === m;
+            return (
+              <button
+                key={m}
+                onClick={() => {
+                  setSelectedMuscle(m);
+                  setSelectedBodySlug(null);
+                }}
+                style={{
+                  flexShrink: 0,
+                  padding: "4px 9px",
+                  borderRadius: 999,
+                  border: "none",
+                  background: isCurrent ? "oklch(0.92 0.25 110)" : "oklch(0.18 0.01 250)",
+                  color: isCurrent ? "oklch(0.07 0.01 110)" : "oklch(0.75 0.01 250)",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                {m}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Search Input */}
+        <input
+          type="text"
+          placeholder={`Search ${selectedMuscle === "All" ? "1,300+ exercises..." : `${selectedMuscle.toLowerCase()} movements...`}`}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{
+            width: "100%",
+            background: "oklch(0.08 0.004 250)",
+            border: "1px solid oklch(0.22 0.005 250)",
+            color: "white",
+            padding: "9px 12px",
+            borderRadius: 7,
+            fontSize: 13,
+            outline: "none",
+            boxSizing: "border-box",
+          }}
+        />
+
+        {/* Exercise Results List */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            maxHeight: isModal ? "50vh" : "55vh",
+            overflowY: "auto",
+            width: "100%",
+          }}
+        >
+          {loadingSearch ? (
+            <div style={{ textAlign: "center", padding: "24px 0", color: "oklch(0.5 0.01 250)", fontSize: 12.5 }}>
+              Loading exercises...
+            </div>
+          ) : results?.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "24px 0", color: "oklch(0.5 0.01 250)", fontSize: 12.5 }}>
+              No exercises found matching your search.
+            </div>
+          ) : (
+            results?.map((ex) => {
+              const isAdded = !!activeDay.exercises.find((e) => e.exerciseId === ex.id);
+              return (
+                <div
+                  key={ex.id}
+                  onClick={() => toggleAddExercise(ex)}
+                  style={{
+                    padding: "9px 11px",
+                    background: isAdded ? "oklch(0.18 0.01 250)" : "oklch(0.09 0.004 250)",
+                    border: isAdded ? "1.5px solid oklch(0.92 0.25 110 / 50%)" : "1px solid oklch(0.2 0.005 250)",
+                    borderRadius: 7,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "white",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {ex.name}
+                    </div>
+                    <div style={{ display: "flex", gap: 4, marginTop: 2, flexWrap: "wrap" }}>
+                      {ex.primary_muscle && (
+                        <span
+                          style={{
+                            fontSize: 9.5,
+                            background: "oklch(0.22 0.005 250)",
+                            color: "oklch(0.75 0.01 250)",
+                            padding: "1px 5px",
+                            borderRadius: 3,
+                          }}
+                        >
+                          {ex.primary_muscle}
+                        </span>
+                      )}
+                      {ex.equipment && (
+                        <span
+                          style={{
+                            fontSize: 9.5,
+                            background: "oklch(0.16 0.005 250)",
+                            color: "oklch(0.6 0.01 250)",
+                            padding: "1px 5px",
+                            borderRadius: 3,
+                          }}
+                        >
+                          {ex.equipment}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    style={{
+                      background: isAdded ? "oklch(0.2 0.05 30)" : "oklch(0.92 0.25 110)",
+                      color: isAdded ? "oklch(0.7 0.15 40)" : "oklch(0.07 0.01 110)",
+                      border: "none",
+                      borderRadius: 5,
+                      padding: "5px 10px",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {isAdded ? "Remove" : "+ Add"}
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "8px 0 60px", width: "100%" }}>
       {/* Top Header */}
@@ -247,7 +524,7 @@ function BuilderPage() {
               color: "oklch(0.07 0.01 110)",
               border: "none",
               borderRadius: 8,
-              padding: "7px 14px",
+              padding: "7px 16px",
               fontSize: 13,
               fontWeight: 700,
               cursor: isSaving ? "wait" : "pointer",
@@ -270,14 +547,14 @@ function BuilderPage() {
         )}
       </div>
 
-      {/* Horizontal Day Selector (Thumb-Friendly, zero horizontal overflow) */}
+      {/* Horizontal Day Selector */}
       <div
         style={{
           display: "flex",
           gap: 6,
           overflowX: "auto",
           paddingBottom: 6,
-          marginBottom: 12,
+          marginBottom: 14,
           WebkitOverflowScrolling: "touch",
           scrollbarWidth: "none",
           width: "100%",
@@ -293,7 +570,7 @@ function BuilderPage() {
               style={{
                 flexShrink: 0,
                 minWidth: 64,
-                padding: "7px 8px",
+                padding: "8px 10px",
                 borderRadius: 8,
                 border: isActive ? "1.5px solid oklch(0.92 0.25 110)" : "1px solid oklch(0.22 0.005 250)",
                 background: isActive ? "oklch(0.18 0.01 250)" : "oklch(0.11 0.005 250)",
@@ -307,7 +584,7 @@ function BuilderPage() {
               <div
                 style={{
                   fontSize: 10,
-                  marginTop: 1,
+                  marginTop: 2,
                   color: count > 0 ? "oklch(0.92 0.25 110)" : "oklch(0.45 0.01 250)",
                   fontWeight: count > 0 ? 700 : 400,
                 }}
@@ -319,63 +596,16 @@ function BuilderPage() {
         })}
       </div>
 
-      {/* Mobile-Only Segmented Switcher */}
-      <div
-        className="md:hidden"
-        style={{
-          display: "flex",
-          gap: 4,
-          background: "oklch(0.09 0.004 250)",
-          border: "1px solid oklch(0.2 0.005 250)",
-          borderRadius: 8,
-          padding: 3,
-          marginBottom: 14,
-        }}
-      >
-        <button
-          onClick={() => setMobileTab("day")}
-          style={{
-            flex: 1,
-            padding: "8px 10px",
-            borderRadius: 6,
-            border: "none",
-            background: mobileTab === "day" ? "oklch(0.2 0.008 250)" : "transparent",
-            color: mobileTab === "day" ? "white" : "oklch(0.6 0.01 250)",
-            fontSize: 12.5,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          {DAY_SHORT[activeDayIdx]} Workout ({activeDay.exercises.length})
-        </button>
-        <button
-          onClick={() => setMobileTab("library")}
-          style={{
-            flex: 1,
-            padding: "8px 10px",
-            borderRadius: 6,
-            border: "none",
-            background: mobileTab === "library" ? "oklch(0.92 0.25 110)" : "transparent",
-            color: mobileTab === "library" ? "oklch(0.07 0.01 110)" : "oklch(0.7 0.01 250)",
-            fontSize: 12.5,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          + Add Exercises
-        </button>
-      </div>
-
-      {/* Responsive Builder Grid */}
-      <div className="builder-grid" data-tab={mobileTab}>
-        {/* PANEL 1: Active Day Configuration */}
+      {/* Main Builder Grid: Always shows Day Workout, with Side Library on Desktop */}
+      <div className="builder-grid">
+        {/* PANEL 1: Active Day Configuration (ALWAYS VISIBLE) */}
         <div
           className="builder-day-panel"
           style={{
             background: "oklch(0.12 0.005 250)",
             border: "1px solid oklch(0.24 0.005 250)",
             borderRadius: 12,
-            padding: "14px 12px",
+            padding: "16px 14px",
           }}
         >
           {/* Day Title Input */}
@@ -393,10 +623,11 @@ function BuilderPage() {
                 background: "oklch(0.08 0.004 250)",
                 border: "1px solid oklch(0.22 0.005 250)",
                 color: "white",
-                padding: "8px 10px",
-                borderRadius: 6,
+                padding: "9px 12px",
+                borderRadius: 7,
                 fontSize: 13.5,
                 outline: "none",
+                boxSizing: "border-box",
               }}
             />
           </div>
@@ -415,51 +646,55 @@ function BuilderPage() {
             </label>
           </div>
 
-          {/* Exercises Header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "white" }}>
-              Exercises ({activeDay.exercises.length})
+          {/* Exercises Header with + Add Exercises button */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "white" }}>
+              {DAY_LABELS[activeDayIdx]} Exercises ({activeDay.exercises.length})
             </h3>
             <button
-              onClick={() => setMobileTab("library")}
+              onClick={() => setMobileModalOpen(true)}
               style={{
-                background: "transparent",
+                background: "oklch(0.92 0.25 110)",
+                color: "oklch(0.07 0.01 110)",
                 border: "none",
-                color: "oklch(0.92 0.25 110)",
+                borderRadius: 6,
+                padding: "5px 12px",
                 fontSize: 12,
                 fontWeight: 700,
                 cursor: "pointer",
-                padding: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
               }}
             >
-              + Add more
+              + Add Exercise
             </button>
           </div>
 
           {activeDay.exercises.length === 0 ? (
             <div
               style={{
-                padding: "28px 12px",
+                padding: "32px 14px",
                 textAlign: "center",
                 border: "1px dashed oklch(0.24 0.01 250)",
                 borderRadius: 10,
                 background: "oklch(0.09 0.004 250)",
               }}
             >
-              <div style={{ fontSize: 22, marginBottom: 4 }}>💤</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "white" }}>Rest Day</div>
-              <p style={{ fontSize: 11.5, color: "oklch(0.55 0.01 250)", margin: "4px 0 12px" }}>
+              <div style={{ fontSize: 24, marginBottom: 4 }}>💤</div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: "white" }}>Rest Day</div>
+              <p style={{ fontSize: 12, color: "oklch(0.55 0.01 250)", margin: "4px 0 14px" }}>
                 No exercises added for {DAY_LABELS[activeDayIdx]}.
               </p>
               <button
-                onClick={() => setMobileTab("library")}
+                onClick={() => setMobileModalOpen(true)}
                 style={{
                   background: "oklch(0.92 0.25 110)",
                   color: "oklch(0.07 0.01 110)",
                   border: "none",
                   borderRadius: 6,
-                  padding: "7px 14px",
-                  fontSize: 12,
+                  padding: "8px 16px",
+                  fontSize: 12.5,
                   fontWeight: 700,
                   cursor: "pointer",
                 }}
@@ -585,6 +820,7 @@ function BuilderPage() {
                             padding: "5px 8px",
                             borderRadius: 4,
                             fontSize: 12.5,
+                            boxSizing: "border-box",
                           }}
                         />
                       </div>
@@ -607,6 +843,7 @@ function BuilderPage() {
                               padding: "5px 8px",
                               borderRadius: 4,
                               fontSize: 12.5,
+                              boxSizing: "border-box",
                             }}
                           />
                         </div>
@@ -627,6 +864,7 @@ function BuilderPage() {
                               padding: "5px 8px",
                               borderRadius: 4,
                               fontSize: 12.5,
+                              boxSizing: "border-box",
                             }}
                           />
                         </div>
@@ -648,6 +886,7 @@ function BuilderPage() {
                               padding: "5px 8px",
                               borderRadius: 4,
                               fontSize: 12.5,
+                              boxSizing: "border-box",
                             }}
                           />
                         </div>
@@ -660,243 +899,54 @@ function BuilderPage() {
           )}
         </div>
 
-        {/* PANEL 2: Exercise Library & Body Map */}
+        {/* PANEL 2: Desktop Side-by-Side Exercise Library (Hidden on mobile, uses Modal on mobile) */}
         <div
-          className="builder-lib-panel"
+          className="hidden md:block builder-lib-panel"
           style={{
             background: "oklch(0.12 0.005 250)",
             border: "1px solid oklch(0.24 0.005 250)",
             borderRadius: 12,
-            padding: "14px 12px",
+            padding: "16px 14px",
           }}
         >
-          {/* Header & Done button for mobile */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "white" }}>
-                Add to {DAY_SHORT[activeDayIdx]}
-              </h3>
-              <p style={{ margin: "1px 0 0", fontSize: 11, color: "oklch(0.55 0.01 250)" }}>
-                {activeDay.exercises.length} exercises selected
-              </p>
-            </div>
-
-            <div style={{ display: "flex", gap: 6 }}>
-              <button
-                onClick={() => setShowBodyMap((v) => !v)}
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  padding: "4px 8px",
-                  borderRadius: 6,
-                  border: "1px solid oklch(0.25 0.01 250)",
-                  background: showBodyMap ? "oklch(0.92 0.25 110 / 15%)" : "oklch(0.16 0.005 250)",
-                  color: showBodyMap ? "oklch(0.92 0.25 110)" : "oklch(0.75 0.01 250)",
-                  cursor: "pointer",
-                }}
-              >
-                {showBodyMap ? "Hide Model" : "🧍 Model"}
-              </button>
-
-              <button
-                onClick={() => setMobileTab("day")}
-                className="md:hidden"
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  padding: "4px 10px",
-                  borderRadius: 6,
-                  border: "none",
-                  background: "oklch(0.92 0.25 110)",
-                  color: "oklch(0.07 0.01 110)",
-                  cursor: "pointer",
-                }}
-              >
-                Done ✓
-              </button>
-            </div>
-          </div>
-
-          {/* Interactive Anatomical Body Map */}
-          {showBodyMap && (
-            <div style={{ marginBottom: 12, width: "100%" }}>
-              <BodyMap
-                size="sm"
-                selectedMuscle={selectedBodySlug}
-                onSelectMuscle={(slug, name) => {
-                  setSelectedBodySlug(slug);
-                  const mapped = BODY_MAP_TO_SEARCH_TERMS[slug] || name;
-                  setSelectedMuscle(mapped);
-                }}
-              />
-            </div>
-          )}
-
-          {/* Muscle Filter Chips */}
-          <div
-            style={{
-              display: "flex",
-              gap: 5,
-              overflowX: "auto",
-              paddingBottom: 6,
-              marginBottom: 10,
-              WebkitOverflowScrolling: "touch",
-              scrollbarWidth: "none",
-              width: "100%",
-            }}
-          >
-            {MUSCLE_FILTER_CHIPS.map((m) => {
-              const isCurrent = selectedMuscle === m;
-              return (
-                <button
-                  key={m}
-                  onClick={() => {
-                    setSelectedMuscle(m);
-                    setSelectedBodySlug(null);
-                  }}
-                  style={{
-                    flexShrink: 0,
-                    padding: "3px 8px",
-                    borderRadius: 999,
-                    border: "none",
-                    background: isCurrent ? "oklch(0.92 0.25 110)" : "oklch(0.18 0.01 250)",
-                    color: isCurrent ? "oklch(0.07 0.01 110)" : "oklch(0.75 0.01 250)",
-                    fontSize: 10.5,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                >
-                  {m}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Search Input */}
-          <input
-            type="text"
-            placeholder={`Search ${selectedMuscle === "All" ? "1,300+ exercises..." : `${selectedMuscle.toLowerCase()} movements...`}`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{
-              width: "100%",
-              background: "oklch(0.08 0.004 250)",
-              border: "1px solid oklch(0.22 0.005 250)",
-              color: "white",
-              padding: "8px 10px",
-              borderRadius: 6,
-              fontSize: 12.5,
-              marginBottom: 10,
-              outline: "none",
-            }}
-          />
-
-          {/* Exercise Results List */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              maxHeight: "52vh",
-              overflowY: "auto",
-              width: "100%",
-            }}
-          >
-            {loadingSearch ? (
-              <div style={{ textAlign: "center", padding: "20px 0", color: "oklch(0.5 0.01 250)", fontSize: 12 }}>
-                Loading exercises...
-              </div>
-            ) : results?.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "20px 0", color: "oklch(0.5 0.01 250)", fontSize: 12 }}>
-                No exercises found.
-              </div>
-            ) : (
-              results?.map((ex) => {
-                const isAdded = !!activeDay.exercises.find((e) => e.exerciseId === ex.id);
-                return (
-                  <div
-                    key={ex.id}
-                    onClick={() => toggleAddExercise(ex)}
-                    style={{
-                      padding: "8px 10px",
-                      background: isAdded ? "oklch(0.18 0.01 250)" : "oklch(0.09 0.004 250)",
-                      border: isAdded ? "1px solid oklch(0.92 0.25 110 / 40%)" : "1px solid oklch(0.2 0.005 250)",
-                      borderRadius: 6,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 8,
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                    }}
-                  >
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div
-                        style={{
-                          fontSize: 12.5,
-                          fontWeight: 600,
-                          color: "white",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {ex.name}
-                      </div>
-                      <div style={{ display: "flex", gap: 4, marginTop: 2, flexWrap: "wrap" }}>
-                        {ex.primary_muscle && (
-                          <span
-                            style={{
-                              fontSize: 9.5,
-                              background: "oklch(0.22 0.005 250)",
-                              color: "oklch(0.75 0.01 250)",
-                              padding: "1px 4px",
-                              borderRadius: 3,
-                            }}
-                          >
-                            {ex.primary_muscle}
-                          </span>
-                        )}
-                        {ex.equipment && (
-                          <span
-                            style={{
-                              fontSize: 9.5,
-                              background: "oklch(0.16 0.005 250)",
-                              color: "oklch(0.6 0.01 250)",
-                              padding: "1px 4px",
-                              borderRadius: 3,
-                            }}
-                          >
-                            {ex.equipment}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <button
-                      style={{
-                        background: isAdded ? "oklch(0.2 0.05 30)" : "oklch(0.92 0.25 110)",
-                        color: isAdded ? "oklch(0.7 0.15 40)" : "oklch(0.07 0.01 110)",
-                        border: "none",
-                        borderRadius: 4,
-                        padding: "4px 8px",
-                        fontSize: 11,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        whiteSpace: "nowrap",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {isAdded ? "Remove" : "+ Add"}
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
+          {renderExerciseLibrary(false)}
         </div>
       </div>
+
+      {/* Mobile Modal Drawer: Opened when clicking + Add Exercise on Mobile */}
+      {mobileModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 999,
+            background: "rgba(0,0,0,0.75)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+          }}
+          onClick={() => setMobileModalOpen(false)}
+        >
+          <div
+            style={{
+              background: "oklch(0.12 0.005 250)",
+              borderTop: "1px solid oklch(0.28 0.005 250)",
+              borderRadius: "16px 16px 0 0",
+              padding: "16px 14px 28px",
+              width: "100%",
+              maxWidth: 520,
+              maxHeight: "85vh",
+              boxShadow: "0 -8px 32px rgba(0,0,0,0.6)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {renderExerciseLibrary(true)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
