@@ -44,32 +44,33 @@ function AuthPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanOtp = otpCode.trim();
     try {
       if (mode === "signup") {
         const { error } = await supabase.auth.signUp({
-          email,
+          email: cleanEmail,
           password,
           options: {
-            data: { name },
+            data: { name: name.trim() },
           },
         });
         if (error) throw error;
         toast.success("Verification code sent to your email.");
         setMode("verify_signup_otp");
       } else if (mode === "verify_signup_otp") {
-        const { error } = await supabase.auth.verifyOtp({ email, token: otpCode, type: "signup" });
+        const { error } = await supabase.auth.verifyOtp({ email: cleanEmail, token: cleanOtp, type: "signup" });
         if (error) throw error;
         toast.success("Account verified. Welcome!");
-        // session will populate and auto-redirect
       } else if (mode === "forgot_password") {
-        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail);
         if (error) throw error;
         toast.success("Recovery code sent to your email.");
         setMode("verify_otp");
       } else if (mode === "verify_otp") {
         const { error } = await supabase.auth.verifyOtp({
-          email,
-          token: otpCode,
+          email: cleanEmail,
+          token: cleanOtp,
           type: "recovery",
         });
         if (error) throw error;
@@ -83,7 +84,7 @@ function AuthPage() {
         // We are already logged in from verifyOtp, so just go home
         router.navigate({ to: "/" });
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
         if (error) throw error;
       }
     } catch (err) {
