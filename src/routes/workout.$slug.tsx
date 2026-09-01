@@ -80,7 +80,7 @@ function WorkoutPage() {
     return () => clearInterval(id);
   }, []);
 
-  const { data: plan } = useQuery({
+  const { data: plan, isLoading: planLoading } = useQuery({
     queryKey: ["day", slug, user?.id],
     queryFn: () => fetchDayWithExercises(slug, user?.id),
   });
@@ -238,12 +238,39 @@ function WorkoutPage() {
     };
   }, [sessionId, isCompletedToday, plan?.day?.name, completedSets, totalSets, workoutElapsedLabel]);
 
+  if (planLoading) return <WorkoutSkeleton />;
+
+  if (!plan) {
+    return (
+      <div style={{ textAlign: "center", padding: "60px 20px" }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700 }}>Workout Not Found</h2>
+        <p style={{ color: "oklch(0.6 0.01 250)", marginTop: 6, fontSize: 13 }}>
+          Could not find workout session details for this day.
+        </p>
+        <button
+          onClick={() => router.navigate({ to: "/plan" })}
+          style={{
+            marginTop: 16,
+            background: "oklch(0.92 0.25 110)",
+            color: "oklch(0.07 0.01 110)",
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 16px",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          ← Return to Plan
+        </button>
+      </div>
+    );
+  }
+
   // Keep showing the skeleton until we know whether we're resuming an existing
-  // session AND its logged sets have loaded — otherwise the page briefly renders
-  // the "Start workout" button (then a disabled "Starting..." state), then a
-  // reset-looking 0:00/0-sets header, before the real in-progress numbers pop in.
+  // session AND its logged sets have loaded.
   const resolvingSession =
-    !plan || (!!user && todaySessionLoading) || (!!todaySession && (!sessionId || !detail));
+    (!!user && todaySessionLoading) || (!!todaySession && (!sessionId || !detail));
   if (resolvingSession) return <WorkoutSkeleton />;
 
   if (completedSummary && typeof document !== "undefined") {

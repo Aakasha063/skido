@@ -30,13 +30,24 @@ export async function fetchDays(userId?: string) {
 }
 
 export async function fetchDayWithExercises(slug: string, userId?: string) {
-  const { data: day, error } = await supabase
+  let query = supabase
     .from("workout_days")
     .select("*")
-    .eq("slug", slug)
-    .maybeSingle();
+    .eq("slug", slug);
+
+  if (userId) {
+    query = query.or(`user_id.is.null,user_id.eq.${userId}`);
+  } else {
+    query = query.is("user_id", null);
+  }
+
+  const { data: dayRows, error } = await query;
   if (error) throw error;
-  if (!day) return null;
+  if (!dayRows || dayRows.length === 0) return null;
+
+  // Prefer custom day for this user over system default day
+  const day = (userId ? dayRows.find((d) => d.user_id === userId) : null) || dayRows[0]!;
+
   const { data: exercises, error: exErr } = await supabase
     .from("workout_exercises")
     .select("*, exercises(*)")
