@@ -19,10 +19,12 @@ import {
   logSet,
   startSession,
   deleteSet,
+  replaceSessionExercise,
   type Exercise,
 } from "@/lib/api";
 import { suggestNextSet } from "@/lib/progression";
 import { mmss } from "@/lib/format";
+import { SubstitutionModal } from "@/components/SubstitutionModal";
 
 export const Route = createFileRoute("/workout/$slug")({
   validateSearch: (search: Record<string, unknown>): { start?: boolean } => {
@@ -79,8 +81,8 @@ function WorkoutPage() {
   }, []);
 
   const { data: plan } = useQuery({
-    queryKey: ["day", slug],
-    queryFn: () => fetchDayWithExercises(slug),
+    queryKey: ["day", slug, user?.id],
+    queryFn: () => fetchDayWithExercises(slug, user?.id),
   });
 
   // A session already logged today for this day — in_progress (e.g. after a page
@@ -686,6 +688,7 @@ function WorkoutPage() {
                 isCompound={we.exercises.is_compound}
                 isCardio={we.exercises.category === "cardio"}
                 exerciseId={we.exercise_id}
+                workoutExerciseId={we.id}
                 exerciseSessionId={es?.id ?? null}
                 loggedSets={(detail?.sets ?? []).filter((s) => s.exercise_session_id === es?.id)}
                 userId={user?.id ?? null}
@@ -852,6 +855,7 @@ function ExerciseCard(props: {
   loggedSets: { id: string; set_number: number; weight_kg: number | null; reps: number | null }[];
   userId: string | null;
   sessionId: string | null;
+  workoutExerciseId: string;
   onInfo: () => void;
   onLogged: () => void;
 }) {
@@ -895,6 +899,7 @@ function ExerciseCard(props: {
   const started = !!props.sessionId;
 
   const [collapsed, setCollapsed] = useState(false);
+  const [replacing, setReplacing] = useState(false);
 
   // Auto-collapse when exercise becomes done
   useEffect(() => {
@@ -1110,6 +1115,29 @@ function ExerciseCard(props: {
               }}
             >
               ▾
+            </button>
+          )}
+          {!done && (
+            <button
+              onClick={() => setReplacing(true)}
+              aria-label="Replace exercise"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 7,
+                border: "none",
+                background: "transparent",
+                color: "oklch(0.63 0.006 250)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
             </button>
           )}
           <button
@@ -1477,6 +1505,32 @@ function ExerciseCard(props: {
             </div>
           ) : null}
         </>
+      )}
+      {replacing && (
+        <SubstitutionModal
+          originalExerciseId={props.exerciseId}
+          originalExerciseName={props.name}
+          onClose={() => setReplacing(false)}
+          onSelect={async (newExerciseId) => {
+            try {
+              await replaceSessionExercise(
+                props.userId!,
+                props.sessionId,
+                props.workoutExerciseId,
+                props.exerciseId,
+                newExerciseId
+              );
+              qc.invalidateQueries({ queryKey: ["day"] });
+              if (props.sessionId) {
+                qc.invalidateQueries({ queryKey: ["session", props.sessionId] });
+              }
+              setReplacing(false);
+              toast.success("Exercise replaced permanently");
+            } catch (err: any) {
+              toast.error(err.message);
+            }
+          }}
+        />
       )}
     </div>
   );

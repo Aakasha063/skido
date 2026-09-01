@@ -89,6 +89,35 @@ export function ExerciseInstructions({
             .join(" · ")}
         </p>
 
+        {exercise.gif_url && (
+          <div style={{
+            borderRadius: 14,
+            overflow: "hidden",
+            border: "1px solid oklch(0.27 0.005 250)",
+            background: "#ffffff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "100%",
+            aspectRatio: "1 / 1",
+            maxHeight: 340,
+            margin: "0 auto",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+          }}>
+            <img
+              src={exercise.gif_url}
+              alt={exercise.name}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                display: "block",
+              }}
+              onError={(e) => { (e.target as HTMLElement).style.display = "none"; }}
+            />
+          </div>
+        )}
+
         <Section title="Setup" items={exercise.setup} />
         <Section title="Execution" items={exercise.execution} />
         <Section title="Cues" items={exercise.cues} />

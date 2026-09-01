@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as BodyRouteImport } from './routes/body'
+import { Route as BuilderRouteImport } from './routes/builder'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as LeaderboardRouteImport } from './routes/leaderboard'
 import { Route as PlanRouteImport } from './routes/plan'
@@ -34,6 +35,11 @@ const AuthRoute = AuthRouteImport.update({
 const BodyRoute = BodyRouteImport.update({
   id: '/body',
   path: '/body',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BuilderRoute = BuilderRouteImport.update({
+  id: '/builder',
+  path: '/builder',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HistoryRoute = HistoryRouteImport.update({
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/body': typeof BodyRoute
+  '/builder': typeof BuilderRoute
   '/history': typeof HistoryRoute
   '/leaderboard': typeof LeaderboardRoute
   '/plan': typeof PlanRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/body': typeof BodyRoute
+  '/builder': typeof BuilderRoute
   '/history': typeof HistoryRoute
   '/leaderboard': typeof LeaderboardRoute
   '/plan': typeof PlanRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/body': typeof BodyRoute
+  '/builder': typeof BuilderRoute
   '/history': typeof HistoryRoute
   '/leaderboard': typeof LeaderboardRoute
   '/plan': typeof PlanRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/body'
+    | '/builder'
     | '/history'
     | '/leaderboard'
     | '/plan'
@@ -136,6 +146,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/body'
+    | '/builder'
     | '/history'
     | '/leaderboard'
     | '/plan'
@@ -149,6 +160,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/body'
+    | '/builder'
     | '/history'
     | '/leaderboard'
     | '/plan'
@@ -163,6 +175,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
   BodyRoute: typeof BodyRoute
+  BuilderRoute: typeof BuilderRoute
   HistoryRoute: typeof HistoryRoute
   LeaderboardRoute: typeof LeaderboardRoute
   PlanRoute: typeof PlanRoute
@@ -194,6 +207,13 @@ declare module '@tanstack/react-router' {
       path: '/body'
       fullPath: '/body'
       preLoaderRoute: typeof BodyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/builder': {
+      id: '/builder'
+      path: '/builder'
+      fullPath: '/builder'
+      preLoaderRoute: typeof BuilderRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/history': {
@@ -259,6 +279,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
   BodyRoute: BodyRoute,
+  BuilderRoute: BuilderRoute,
   HistoryRoute: HistoryRoute,
   LeaderboardRoute: LeaderboardRoute,
   PlanRoute: PlanRoute,

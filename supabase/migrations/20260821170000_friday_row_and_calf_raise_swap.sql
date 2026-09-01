@@ -16,7 +16,7 @@ INSERT INTO public.exercises (
   'Squeeze across the upper back and rear delts, more than a standard-grip row.',
   'Chest support keeps the lower back out of it - keep it that way.',
   120, '1-2', '8-12', true
-);
+) ON CONFLICT (slug) DO NOTHING;
 
 INSERT INTO public.exercises (
   slug, name, primary_muscle, secondary_muscles, category, equipment,
@@ -32,7 +32,7 @@ INSERT INTO public.exercises (
   ARRAY['Short, bouncy reps.', 'Letting the knees drift straight, turning it into a standing raise.'],
   'A strong stretch and cramp-like contraction deep in the calf, more soleus-biased than standing raises.',
   NULL, 75, '0-1', '12-15', false
-);
+) ON CONFLICT (slug) DO NOTHING;
 
 -- 2. Point Friday's two plan slots at the new exercises (same workout_exercises row —
 --    keeps set/rep/rest targets and, crucially, keeps every exercise_sessions row's

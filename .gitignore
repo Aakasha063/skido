@@ -32,6 +32,10 @@ dist-ssr
 # Local tooling output / scripts with embedded credentials — never commit
 graphify-out/
 create_user.cjs
+src/scripts/
+openGym/
+data/
+supabase/.temp/
 *.suo
 *.ntvs*
 *.njsproj

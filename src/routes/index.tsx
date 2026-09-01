@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { fetchBodyMetrics, fetchDays, fetchHistory, fetchPRs, fetchProfile } from "@/lib/api";
 import { buildWeekStatus } from "@/lib/weekStatus";
 import { DashboardSkeleton } from "@/components/Skeleton";
+import { Heatmap, type WorkoutActivity } from "@/components/Heatmap";
 
 const STRUCTURED_DATA = {
   "@context": "https://schema.org",
@@ -91,7 +92,10 @@ function IndexRoute() {
 
 function Dashboard() {
   const { user } = useAuth();
-  const { data: days } = useQuery({ queryKey: ["days"], queryFn: fetchDays });
+  const { data: days } = useQuery({ 
+    queryKey: ["days", user?.id], 
+    queryFn: () => fetchDays(user?.id),
+  });
   const { data: history } = useQuery({
     queryKey: ["history", user?.id],
     queryFn: () => fetchHistory(user!.id),
@@ -201,6 +205,21 @@ function Dashboard() {
   const estDuration = today?.estimated_minutes_min
     ? `${today.estimated_minutes_min}–${today.estimated_minutes_max ?? ""} min`
     : "~60 min";
+
+  const heatmapActivities: WorkoutActivity[] = (history ?? [])
+    .filter((s) => s.status === "completed")
+    .map((s) => {
+      const date = (s.session_date || s.started_at || "").slice(0, 10);
+      const start = s.started_at ? new Date(s.started_at).getTime() : 0;
+      const end = s.ended_at ? new Date(s.ended_at).getTime() : start + 45 * 60000;
+      const minutes = Math.max(15, Math.round((end - start) / 60000));
+      return {
+        date,
+        minutes,
+        volumeKg: s.total_volume_kg || 0,
+        workoutName: s.title || (s.workout_days as any)?.name || "Workout",
+      };
+    });
 
   // Show skeleton while critical data is loading
   if (!days || !history)
@@ -423,6 +442,9 @@ function Dashboard() {
         />
         <StatCard label="PRs" value={String(prCount)} sub={prsContext} />
       </div>
+
+      {/* Training Consistency Heatmap */}
+      <Heatmap activities={heatmapActivities} />
 
       {/* This week */}
       <div>

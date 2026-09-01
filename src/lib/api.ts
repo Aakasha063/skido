@@ -9,11 +9,19 @@ export type SessionRow = Tables<"workout_sessions">;
 export type SetRow = Tables<"sets">;
 export type ExerciseSession = Tables<"exercise_sessions">;
 
-export async function fetchDays() {
-  const { data, error } = await supabase
+export async function fetchDays(userId?: string) {
+  let query = supabase
     .from("workout_days")
     .select("*, workout_exercises(id)")
     .order("sort_order");
+    
+  if (userId) {
+    query = query.or(`user_id.is.null,user_id.eq.${userId}`);
+  } else {
+    query = query.is("user_id", null);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return data.map((d: any) => ({
     ...d,
@@ -21,7 +29,7 @@ export async function fetchDays() {
   }));
 }
 
-export async function fetchDayWithExercises(slug: string) {
+export async function fetchDayWithExercises(slug: string, userId?: string) {
   const { data: day, error } = await supabase
     .from("workout_days")
     .select("*")
@@ -35,7 +43,45 @@ export async function fetchDayWithExercises(slug: string) {
     .eq("day_id", day.id)
     .order("position");
   if (exErr) throw exErr;
-  return { day, exercises: (exercises ?? []) as WorkoutExercise[] };
+
+  let finalExercises = (exercises ?? []) as WorkoutExercise[];
+
+  if (userId && finalExercises.length > 0) {
+    const { data: replacements } = await supabase
+      .from("user_exercise_replacements")
+      .select("workout_exercise_id, replacement_exercise_id")
+      .eq("user_id", userId)
+      .in("workout_exercise_id", finalExercises.map(e => e.id));
+
+    if (replacements && replacements.length > 0) {
+      const { data: replExercises } = await supabase
+        .from("exercises")
+        .select("*")
+        .in("id", replacements.map(r => r.replacement_exercise_id));
+
+      if (replExercises) {
+        const replMap = Object.fromEntries(
+          replacements.map(r => [
+            r.workout_exercise_id, 
+            replExercises.find(ex => ex.id === r.replacement_exercise_id)
+          ])
+        );
+
+        finalExercises = finalExercises.map((ex) => {
+          if (replMap[ex.id]) {
+            return {
+              ...ex,
+              exercise_id: replMap[ex.id].id,
+              exercises: replMap[ex.id]
+            };
+          }
+          return ex;
+        });
+      }
+    }
+  }
+
+  return { day, exercises: finalExercises };
 }
 
 export async function fetchActiveSession(userId: string) {
@@ -263,10 +309,116 @@ export async function logSet(params: {
   return data;
 }
 
-export async function deleteSet(id: string) {
-  const { error } = await supabase.from("sets").delete().eq("id", id);
+export async function deleteSet(setId: string) {
+  const { error } = await supabase.from("sets").delete().eq("id", setId);
   if (error) throw error;
 }
+
+export type CustomDayInput = {
+  dayOfWeek: number;
+  name: string;
+  isOptional: boolean;
+  exercises: {
+    exerciseId: string;
+    sets: number;
+    repRange: string;
+    restSeconds: number;
+  }[];
+};
+
+export async function createCustomPlan(userId: string, days: CustomDayInput[]) {
+  // Enforce Max 1 custom plan by finding and deleting any existing custom plan for this user
+  const { data: existing } = await supabase
+    .from("workout_days")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("is_custom", true);
+
+  if (existing && existing.length > 0) {
+    // Cascade delete handles workout_exercises
+    await supabase.from("workout_days").delete().in("id", existing.map(d => d.id));
+  }
+
+  // Create the new days
+  const dayPayloads = days.map((d) => ({
+    name: d.name || "Rest Day",
+    slug: `custom-${Date.now()}-${d.dayOfWeek}`,
+    day_of_week: d.dayOfWeek,
+    is_optional: d.isOptional,
+    sort_order: 99,
+    is_custom: true,
+    user_id: userId,
+  }));
+
+  const { data: insertedDays, error: dayErr } = await supabase
+    .from("workout_days")
+    .insert(dayPayloads)
+    .select();
+
+  if (dayErr) throw dayErr;
+
+  // Insert workout_exercises
+  const workoutExercises: any[] = [];
+  
+  for (const insertedDay of insertedDays) {
+    const originalInput = days.find(d => d.dayOfWeek === insertedDay.day_of_week);
+    if (!originalInput) continue;
+    
+    originalInput.exercises.forEach((ex, index) => {
+      workoutExercises.push({
+        day_id: insertedDay.id,
+        exercise_id: ex.exerciseId,
+        position: index,
+        target_sets: ex.sets || 3,
+        target_reps: ex.repRange || "8-12",
+        rest_seconds: ex.restSeconds || 120,
+      });
+    });
+  }
+
+  if (workoutExercises.length > 0) {
+    const { error: weErr } = await supabase.from("workout_exercises").insert(workoutExercises);
+    if (weErr) throw weErr;
+  }
+
+  return insertedDays;
+}
+
+export async function replaceSessionExercise(
+  userId: string,
+  sessionId: string | null | undefined,
+  workoutExerciseId: string,
+  originalExerciseId: string,
+  newExerciseId: string,
+  reason?: string
+) {
+  // 1. Record the replacement rule so it applies to future sessions
+  const { error: replErr } = await supabase
+    .from("user_exercise_replacements")
+    .upsert({
+      user_id: userId,
+      workout_exercise_id: workoutExerciseId,
+      original_exercise_id: originalExerciseId,
+      replacement_exercise_id: newExerciseId,
+      reason,
+    }, { onConflict: "user_id,workout_exercise_id" });
+
+  if (replErr) throw replErr;
+
+  // 2. Update today's in_progress exercise_session so sets logged right now go to the new exercise
+  if (sessionId) {
+    const { error: sessionErr } = await supabase
+      .from("exercise_sessions")
+      .update({ exercise_id: newExerciseId })
+      .eq("session_id", sessionId)
+      .eq("workout_exercise_id", workoutExerciseId);
+
+    if (sessionErr) throw sessionErr;
+  }
+
+  return true;
+}
+
 
 /** Detects and stores new personal records for a finished session. */
 export async function evaluatePRs(params: { userId: string; sessionId: string }) {

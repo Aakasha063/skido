@@ -38,7 +38,10 @@ const PLAN_INFO = {
 
 function PlanPage() {
   const { user } = useAuth();
-  const { data: days } = useQuery({ queryKey: ["days"], queryFn: fetchDays });
+  const { data: days } = useQuery({ 
+    queryKey: ["days", user?.id], 
+    queryFn: () => fetchDays(user?.id),
+  });
   const { data: history } = useQuery({
     queryKey: ["history", user?.id],
     queryFn: () => fetchHistory(user!.id),
@@ -52,9 +55,14 @@ function PlanPage() {
   const [selectedOptSlug, setSelectedOptSlug] = useState<string | null>(null);
   const [planModalOpen, setPlanModalOpen] = useState(false);
 
-  const mandatory = (days ?? []).filter((d) => !d.is_optional && d.day_of_week !== 0);
-  const optional = (days ?? []).filter((d) => d.is_optional);
-  const sunday = (days ?? []).find((d) => d.day_of_week === 0);
+  const hasCustomPlan = (days ?? []).some((d) => d.is_custom);
+  const activeDays = hasCustomPlan
+    ? (days ?? []).filter((d) => d.is_custom).sort((a, b) => a.day_of_week - b.day_of_week)
+    : (days ?? []).filter((d) => !d.is_custom).sort((a, b) => a.day_of_week - b.day_of_week);
+
+  const mandatory = activeDays.filter((d) => !d.is_optional && d.day_of_week !== 0);
+  const optional = activeDays.filter((d) => d.is_optional && d.day_of_week !== 0);
+  const sunday = activeDays.find((d) => d.day_of_week === 0);
 
   const { statusFor, weekStartISO, weekEndISO } = buildWeekStatus(
     history ?? [],
@@ -142,16 +150,15 @@ function PlanPage() {
           <h1
             style={{
               margin: "4px 0 0",
-              fontFamily: "'Inter'",
-              fontSize: 34,
+              fontSize: 28,
               fontWeight: 700,
               letterSpacing: "-0.02em",
             }}
           >
-            {PLAN_INFO.name}
+            {hasCustomPlan ? "Custom Weekly Plan" : PLAN_INFO.name}
           </h1>
           <p style={{ margin: "6px 0 0", fontSize: 14, color: "oklch(0.63 0.006 250)" }}>
-            {PLAN_INFO.subtitle} · {PLAN_INFO.meta}
+            {hasCustomPlan ? "Your personal routine" : `${PLAN_INFO.subtitle} · ${PLAN_INFO.meta}`}
           </p>
         </div>
         <button
@@ -270,16 +277,54 @@ function PlanPage() {
                   {PLAN_INFO.subtitle} · {PLAN_INFO.meta}
                 </p>
               </div>
-              <p
-                style={{
-                  margin: "16px 0 0",
-                  fontSize: 12.5,
-                  color: "oklch(0.45 0.006 250)",
-                  textAlign: "center",
-                }}
-              >
-                More plans — you'll be able to enroll and switch here as they launch.
-              </p>
+              <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid oklch(0.27 0.005 250)" }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "oklch(0.7 0.01 250)", marginBottom: 12 }}>
+                  Custom Plans
+                </div>
+                {days?.find(d => d.is_custom) ? (
+                  <div
+                    style={{
+                      border: "1px solid oklch(0.27 0.005 250)",
+                      borderRadius: 12,
+                      padding: 14,
+                      background: "transparent",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Custom Weekly Plan</p>
+                      <Link to="/builder" onClick={() => setPlanModalOpen(false)} style={{ textDecoration: "none" }}>
+                        <span
+                          style={{
+                            borderRadius: 6,
+                            background: "oklch(0.2 0.01 250)",
+                            color: "white",
+                            padding: "4px 8px",
+                            fontSize: 11,
+                            fontWeight: 600,
+                          }}
+                        >
+                          Edit
+                        </span>
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Link to="/builder" onClick={() => setPlanModalOpen(false)} style={{ textDecoration: "none", flex: 1 }}>
+                      <button style={{ ...BTN_OUTLINE, width: "100%", borderColor: "oklch(0.4 0.01 250)", color: "white" }}>
+                        + Build Custom Plan
+                      </button>
+                    </Link>
+                  </div>
+                )}
+              </div>
             </div>
           </div>,
           document.body,
@@ -604,7 +649,9 @@ function PlanPage() {
                       cursor: "pointer",
                     }}
                   >
-                    {buttonLabel(todaySessionFor(selectedOpt.id), "Open")}
+                    {selectedOpt.slug === "saturday-specialization"
+                    ? "Specialize this Saturday"
+                    : `Start ${selectedOpt.name}`}
                   </button>
                 </Link>
               </div>
