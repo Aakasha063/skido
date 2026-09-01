@@ -15,8 +15,9 @@ export async function fetchDays(userId?: string) {
     .select("*, workout_exercises(id)")
     .order("sort_order");
     
-  if (userId) {
-    query = query.or(`user_id.is.null,user_id.eq.${userId}`);
+  const validUid = typeof userId === "string" && userId.trim() ? userId.trim() : null;
+  if (validUid) {
+    query = query.or(`user_id.is.null,user_id.eq.${validUid}`);
   } else {
     query = query.is("user_id", null);
   }
@@ -35,8 +36,9 @@ export async function fetchDayWithExercises(slug: string, userId?: string) {
     .select("*")
     .eq("slug", slug);
 
-  if (userId) {
-    query = query.or(`user_id.is.null,user_id.eq.${userId}`);
+  const validUid = typeof userId === "string" && userId.trim() ? userId.trim() : null;
+  if (validUid) {
+    query = query.or(`user_id.is.null,user_id.eq.${validUid}`);
   } else {
     query = query.is("user_id", null);
   }
@@ -46,7 +48,7 @@ export async function fetchDayWithExercises(slug: string, userId?: string) {
   if (!dayRows || dayRows.length === 0) return null;
 
   // Prefer custom day for this user over system default day
-  const day = (userId ? dayRows.find((d) => d.user_id === userId) : null) || dayRows[0]!;
+  const day = (validUid ? dayRows.find((d) => d.user_id === validUid) : null) || dayRows[0]!;
 
   const { data: exercises, error: exErr } = await supabase
     .from("workout_exercises")

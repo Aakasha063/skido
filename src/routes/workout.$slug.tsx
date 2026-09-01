@@ -225,6 +225,7 @@ function WorkoutPage() {
     ? (detail?.session.duration_seconds ?? 0)
     : Math.round((nowMs - startedAt) / 1000);
   const workoutElapsedLabel = mmss(elapsedSeconds);
+  const workoutPct = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
   // Calculate total volume for this session
   const sessionVolume = validSets.reduce((acc, s) => acc + (s.weight_kg ?? 0) * (s.reps ?? 0), 0);
 

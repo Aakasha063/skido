@@ -100,7 +100,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!session?.user?.id) return;
     const uid = session.user.id;
-    qc.prefetchQuery({ queryKey: ["days"], queryFn: fetchDays });
+    qc.prefetchQuery({ queryKey: ["days", uid], queryFn: () => fetchDays(uid) });
     qc.prefetchQuery({ queryKey: ["history", uid], queryFn: () => fetchHistory(uid) });
     qc.prefetchQuery({ queryKey: ["prs", uid], queryFn: () => fetchPRs(uid) });
     qc.prefetchQuery({ queryKey: ["metrics", uid], queryFn: () => fetchBodyMetrics(uid) });
