@@ -303,4 +303,41 @@
 html,
 body {
   overscroll-behavior: contain;
+  max-width: 100vw;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* ====== Custom Plan Builder Responsive Layout ====== */
+.builder-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  width: 100%;
+}
+
+@media (min-width: 960px) {
+  .builder-grid {
+    grid-template-columns: minmax(360px, 1fr) minmax(380px, 440px);
+    gap: 24px;
+  }
+}
+
+.builder-day-panel,
+.builder-lib-panel {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 959px) {
+  .builder-grid[data-tab="day"] .builder-lib-panel {
+    display: none !important;
+  }
+  .builder-grid[data-tab="library"] .builder-day-panel {
+    display: none !important;
+  }
 }

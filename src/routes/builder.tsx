@@ -76,7 +76,7 @@ function BuilderPage() {
     queryFn: async () => {
       let q = supabase
         .from("exercises")
-        .select("id, name, category, primary_muscle, equipment, default_rep_range, default_rest_seconds, gif_url")
+        .select("id, name, category, primary_muscle, equipment, default_rep_range, default_rest_seconds")
         .eq("status", "active")
         .order("name")
         .limit(80);
@@ -222,9 +222,9 @@ function BuilderPage() {
   const activeDay = daysState[activeDayIdx] || daysState[0]!;
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 12px 60px" }}>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "8px 0 60px", width: "100%" }}>
       {/* Top Header */}
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 14, padding: "0 4px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <Link
             to="/plan"
@@ -247,7 +247,7 @@ function BuilderPage() {
               color: "oklch(0.07 0.01 110)",
               border: "none",
               borderRadius: 8,
-              padding: "8px 16px",
+              padding: "7px 14px",
               fontSize: 13,
               fontWeight: 700,
               cursor: isSaving ? "wait" : "pointer",
@@ -260,26 +260,27 @@ function BuilderPage() {
           </button>
         </div>
 
-        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", margin: "10px 0 2px" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", margin: "8px 0 2px" }}>
           Custom Plan Builder
         </h1>
         {existingCustom && (
-          <div style={{ fontSize: 12, color: "oklch(0.7 0.15 40)", fontWeight: 500 }}>
+          <div style={{ fontSize: 11.5, color: "oklch(0.7 0.15 40)", fontWeight: 500 }}>
             Saving will overwrite your current custom schedule.
           </div>
         )}
       </div>
 
-      {/* Horizontal Day Selector (Mobile Swipeable / Thumb-Friendly) */}
+      {/* Horizontal Day Selector (Thumb-Friendly, zero horizontal overflow) */}
       <div
         style={{
           display: "flex",
-          gap: 8,
+          gap: 6,
           overflowX: "auto",
-          paddingBottom: 8,
-          marginBottom: 16,
+          paddingBottom: 6,
+          marginBottom: 12,
           WebkitOverflowScrolling: "touch",
           scrollbarWidth: "none",
+          width: "100%",
         }}
       >
         {daysState.map((day, idx) => {
@@ -291,9 +292,9 @@ function BuilderPage() {
               onClick={() => setActiveDayIdx(idx)}
               style={{
                 flexShrink: 0,
-                minWidth: 72,
-                padding: "8px 10px",
-                borderRadius: 10,
+                minWidth: 64,
+                padding: "7px 8px",
+                borderRadius: 8,
                 border: isActive ? "1.5px solid oklch(0.92 0.25 110)" : "1px solid oklch(0.22 0.005 250)",
                 background: isActive ? "oklch(0.18 0.01 250)" : "oklch(0.11 0.005 250)",
                 cursor: "pointer",
@@ -302,13 +303,13 @@ function BuilderPage() {
                 transition: "all 0.15s",
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 700 }}>{DAY_SHORT[idx]}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700 }}>{DAY_SHORT[idx]}</div>
               <div
                 style={{
-                  fontSize: 10.5,
-                  marginTop: 2,
+                  fontSize: 10,
+                  marginTop: 1,
                   color: count > 0 ? "oklch(0.92 0.25 110)" : "oklch(0.45 0.01 250)",
-                  fontWeight: count > 0 ? 600 : 400,
+                  fontWeight: count > 0 ? 700 : 400,
                 }}
               >
                 {count > 0 ? `${count} ex` : "Rest"}
@@ -318,44 +319,45 @@ function BuilderPage() {
         })}
       </div>
 
-      {/* Mobile Segmented Switcher (Workout vs Add Exercises) */}
+      {/* Mobile-Only Segmented Switcher */}
       <div
+        className="md:hidden"
         style={{
           display: "flex",
-          gap: 6,
+          gap: 4,
           background: "oklch(0.09 0.004 250)",
           border: "1px solid oklch(0.2 0.005 250)",
-          borderRadius: 10,
+          borderRadius: 8,
           padding: 3,
-          marginBottom: 16,
+          marginBottom: 14,
         }}
       >
         <button
           onClick={() => setMobileTab("day")}
           style={{
             flex: 1,
-            padding: "8px 12px",
-            borderRadius: 8,
+            padding: "8px 10px",
+            borderRadius: 6,
             border: "none",
             background: mobileTab === "day" ? "oklch(0.2 0.008 250)" : "transparent",
             color: mobileTab === "day" ? "white" : "oklch(0.6 0.01 250)",
-            fontSize: 13,
+            fontSize: 12.5,
             fontWeight: 700,
             cursor: "pointer",
           }}
         >
-          {DAY_LABELS[activeDayIdx]} Workout ({activeDay.exercises.length})
+          {DAY_SHORT[activeDayIdx]} Workout ({activeDay.exercises.length})
         </button>
         <button
           onClick={() => setMobileTab("library")}
           style={{
             flex: 1,
-            padding: "8px 12px",
-            borderRadius: 8,
+            padding: "8px 10px",
+            borderRadius: 6,
             border: "none",
             background: mobileTab === "library" ? "oklch(0.92 0.25 110)" : "transparent",
             color: mobileTab === "library" ? "oklch(0.07 0.01 110)" : "oklch(0.7 0.01 250)",
-            fontSize: 13,
+            fontSize: 12.5,
             fontWeight: 700,
             cursor: "pointer",
           }}
@@ -364,221 +366,257 @@ function BuilderPage() {
         </button>
       </div>
 
-      {/* Main Content Area: Responsive Grid / Flex */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr",
-          gap: 16,
-        }}
-      >
-        {/* VIEW 1: Active Day Workout Configuration */}
-        {(mobileTab === "day" || typeof window !== "undefined" && window.innerWidth >= 900) && (
-          <div
-            style={{
-              background: "oklch(0.12 0.005 250)",
-              border: "1px solid oklch(0.24 0.005 250)",
-              borderRadius: 14,
-              padding: "16px 14px",
-            }}
-          >
-            {/* Day Title Input */}
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "oklch(0.65 0.01 250)", marginBottom: 6 }}>
-                Workout Name (e.g. Chest & Triceps)
-              </label>
-              <input
-                type="text"
-                placeholder="Leave blank for Rest Day"
-                value={activeDay.name}
-                onChange={(e) => updateActiveDay((d) => ({ ...d, name: e.target.value }))}
-                style={{
-                  width: "100%",
-                  background: "oklch(0.08 0.004 250)",
-                  border: "1px solid oklch(0.22 0.005 250)",
-                  color: "white",
-                  padding: "9px 12px",
-                  borderRadius: 8,
-                  fontSize: 14,
-                  outline: "none",
-                }}
-              />
-            </div>
+      {/* Responsive Builder Grid */}
+      <div className="builder-grid" data-tab={mobileTab}>
+        {/* PANEL 1: Active Day Configuration */}
+        <div
+          className="builder-day-panel"
+          style={{
+            background: "oklch(0.12 0.005 250)",
+            border: "1px solid oklch(0.24 0.005 250)",
+            borderRadius: 12,
+            padding: "14px 12px",
+          }}
+        >
+          {/* Day Title Input */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "oklch(0.65 0.01 250)", marginBottom: 4 }}>
+              Workout Name
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Chest & Triceps (leave empty for Rest)"
+              value={activeDay.name}
+              onChange={(e) => updateActiveDay((d) => ({ ...d, name: e.target.value }))}
+              style={{
+                width: "100%",
+                background: "oklch(0.08 0.004 250)",
+                border: "1px solid oklch(0.22 0.005 250)",
+                color: "white",
+                padding: "8px 10px",
+                borderRadius: 6,
+                fontSize: 13.5,
+                outline: "none",
+              }}
+            />
+          </div>
 
-            {/* Optional Checkbox */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-              <input
-                type="checkbox"
-                id="isOptional"
-                checked={activeDay.isOptional}
-                onChange={(e) => updateActiveDay((d) => ({ ...d, isOptional: e.target.checked }))}
-                style={{ width: 16, height: 16, accentColor: "oklch(0.92 0.25 110)", cursor: "pointer" }}
-              />
-              <label htmlFor="isOptional" style={{ fontSize: 12.5, color: "oklch(0.75 0.01 250)", cursor: "pointer" }}>
-                Optional workout (no penalty if skipped)
-              </label>
-            </div>
+          {/* Optional Checkbox */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+            <input
+              type="checkbox"
+              id="isOptional"
+              checked={activeDay.isOptional}
+              onChange={(e) => updateActiveDay((d) => ({ ...d, isOptional: e.target.checked }))}
+              style={{ width: 15, height: 15, accentColor: "oklch(0.92 0.25 110)", cursor: "pointer" }}
+            />
+            <label htmlFor="isOptional" style={{ fontSize: 12, color: "oklch(0.7 0.01 250)", cursor: "pointer" }}>
+              Optional workout (no penalty if skipped)
+            </label>
+          </div>
 
-            {/* Exercise List */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "white" }}>
-                Selected Exercises ({activeDay.exercises.length})
-              </h3>
+          {/* Exercises Header */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "white" }}>
+              Exercises ({activeDay.exercises.length})
+            </h3>
+            <button
+              onClick={() => setMobileTab("library")}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "oklch(0.92 0.25 110)",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              + Add more
+            </button>
+          </div>
+
+          {activeDay.exercises.length === 0 ? (
+            <div
+              style={{
+                padding: "28px 12px",
+                textAlign: "center",
+                border: "1px dashed oklch(0.24 0.01 250)",
+                borderRadius: 10,
+                background: "oklch(0.09 0.004 250)",
+              }}
+            >
+              <div style={{ fontSize: 22, marginBottom: 4 }}>💤</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "white" }}>Rest Day</div>
+              <p style={{ fontSize: 11.5, color: "oklch(0.55 0.01 250)", margin: "4px 0 12px" }}>
+                No exercises added for {DAY_LABELS[activeDayIdx]}.
+              </p>
               <button
                 onClick={() => setMobileTab("library")}
                 style={{
-                  background: "transparent",
+                  background: "oklch(0.92 0.25 110)",
+                  color: "oklch(0.07 0.01 110)",
                   border: "none",
-                  color: "oklch(0.92 0.25 110)",
+                  borderRadius: 6,
+                  padding: "7px 14px",
                   fontSize: 12,
                   fontWeight: 700,
                   cursor: "pointer",
                 }}
               >
-                + Add more
+                + Add Exercise
               </button>
             </div>
-
-            {activeDay.exercises.length === 0 ? (
-              <div
-                style={{
-                  padding: "32px 16px",
-                  textAlign: "center",
-                  border: "1px dashed oklch(0.24 0.01 250)",
-                  borderRadius: 12,
-                  background: "oklch(0.09 0.004 250)",
-                }}
-              >
-                <div style={{ fontSize: 24, marginBottom: 6 }}>💤</div>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: "white" }}>Rest Day</div>
-                <p style={{ fontSize: 12, color: "oklch(0.55 0.01 250)", margin: "4px 0 14px" }}>
-                  No exercises added yet for {DAY_LABELS[activeDayIdx]}.
-                </p>
-                <button
-                  onClick={() => setMobileTab("library")}
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {activeDay.exercises.map((ex, idx) => (
+                <div
+                  key={`${ex.exerciseId}-${idx}`}
                   style={{
-                    background: "oklch(0.92 0.25 110)",
-                    color: "oklch(0.07 0.01 110)",
-                    border: "none",
+                    background: "oklch(0.09 0.004 250)",
+                    border: "1px solid oklch(0.22 0.005 250)",
                     borderRadius: 8,
-                    padding: "8px 16px",
-                    fontSize: 12.5,
-                    fontWeight: 700,
-                    cursor: "pointer",
+                    padding: "10px 12px",
                   }}
                 >
-                  + Add Exercise
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {activeDay.exercises.map((ex, idx) => (
-                  <div
-                    key={`${ex.exerciseId}-${idx}`}
-                    style={{
-                      background: "oklch(0.09 0.004 250)",
-                      border: "1px solid oklch(0.22 0.005 250)",
-                      borderRadius: 10,
-                      padding: "12px 14px",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: "oklch(0.92 0.25 110)",
-                            background: "oklch(0.18 0.01 250)",
-                            width: 22,
-                            height: 22,
-                            borderRadius: 999,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {idx + 1}
-                        </span>
-                        <h4
-                          style={{
-                            margin: 0,
-                            fontSize: 13.5,
-                            fontWeight: 700,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {ex.name}
-                        </h4>
-                      </div>
-
-                      {/* Reorder and Delete Actions */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                        <button
-                          onClick={() => moveExercise(idx, "up")}
-                          disabled={idx === 0}
-                          style={{
-                            background: "oklch(0.16 0.005 250)",
-                            border: "none",
-                            borderRadius: 4,
-                            color: idx === 0 ? "oklch(0.3 0.01 250)" : "white",
-                            width: 26,
-                            height: 26,
-                            fontSize: 12,
-                            cursor: idx === 0 ? "default" : "pointer",
-                          }}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          onClick={() => moveExercise(idx, "down")}
-                          disabled={idx === activeDay.exercises.length - 1}
-                          style={{
-                            background: "oklch(0.16 0.005 250)",
-                            border: "none",
-                            borderRadius: 4,
-                            color: idx === activeDay.exercises.length - 1 ? "oklch(0.3 0.01 250)" : "white",
-                            width: 26,
-                            height: 26,
-                            fontSize: 12,
-                            cursor: idx === activeDay.exercises.length - 1 ? "default" : "pointer",
-                          }}
-                        >
-                          ↓
-                        </button>
-                        <button
-                          onClick={() => toggleAddExercise({ id: ex.exerciseId, name: ex.name })}
-                          style={{
-                            background: "oklch(0.2 0.05 30)",
-                            border: "none",
-                            borderRadius: 4,
-                            color: "oklch(0.7 0.15 40)",
-                            width: 26,
-                            height: 26,
-                            fontSize: 12,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            marginLeft: 4,
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1 }}>
+                      <span
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          color: "oklch(0.92 0.25 110)",
+                          background: "oklch(0.18 0.01 250)",
+                          width: 20,
+                          height: 20,
+                          borderRadius: 999,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {idx + 1}
+                      </span>
+                      <h4
+                        style={{
+                          margin: 0,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {ex.name}
+                      </h4>
                     </div>
 
-                    {/* Responsive Exercise Inputs (Sets, Reps, Rest) */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr 1fr", gap: 8 }}>
-                      {ex.category === "cardio" ? (
-                        <div style={{ gridColumn: "1 / -1" }}>
-                          <label style={{ display: "block", fontSize: 10.5, color: "oklch(0.55 0.01 250)", marginBottom: 3 }}>
-                            Duration (mins)
+                    <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
+                      <button
+                        onClick={() => moveExercise(idx, "up")}
+                        disabled={idx === 0}
+                        style={{
+                          background: "oklch(0.16 0.005 250)",
+                          border: "none",
+                          borderRadius: 4,
+                          color: idx === 0 ? "oklch(0.3 0.01 250)" : "white",
+                          width: 24,
+                          height: 24,
+                          fontSize: 11,
+                          cursor: idx === 0 ? "default" : "pointer",
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => moveExercise(idx, "down")}
+                        disabled={idx === activeDay.exercises.length - 1}
+                        style={{
+                          background: "oklch(0.16 0.005 250)",
+                          border: "none",
+                          borderRadius: 4,
+                          color: idx === activeDay.exercises.length - 1 ? "oklch(0.3 0.01 250)" : "white",
+                          width: 24,
+                          height: 24,
+                          fontSize: 11,
+                          cursor: idx === activeDay.exercises.length - 1 ? "default" : "pointer",
+                        }}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        onClick={() => toggleAddExercise({ id: ex.exerciseId, name: ex.name })}
+                        style={{
+                          background: "oklch(0.2 0.05 30)",
+                          border: "none",
+                          borderRadius: 4,
+                          color: "oklch(0.7 0.15 40)",
+                          width: 24,
+                          height: 24,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          marginLeft: 2,
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Compact input grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr 1fr", gap: 6 }}>
+                    {ex.category === "cardio" ? (
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label style={{ display: "block", fontSize: 10, color: "oklch(0.55 0.01 250)", marginBottom: 2 }}>
+                          Duration (mins)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 15"
+                          value={ex.repRange}
+                          onChange={(e) => updateExercise(idx, { repRange: e.target.value })}
+                          style={{
+                            width: "100%",
+                            background: "oklch(0.14 0.005 250)",
+                            border: "1px solid oklch(0.24 0.005 250)",
+                            color: "white",
+                            padding: "5px 8px",
+                            borderRadius: 4,
+                            fontSize: 12.5,
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <label style={{ display: "block", fontSize: 10, color: "oklch(0.55 0.01 250)", marginBottom: 2 }}>
+                            Sets
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={ex.sets}
+                            onChange={(e) => updateExercise(idx, { sets: Number(e.target.value) })}
+                            style={{
+                              width: "100%",
+                              background: "oklch(0.14 0.005 250)",
+                              border: "1px solid oklch(0.24 0.005 250)",
+                              color: "white",
+                              padding: "5px 8px",
+                              borderRadius: 4,
+                              fontSize: 12.5,
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: 10, color: "oklch(0.55 0.01 250)", marginBottom: 2 }}>
+                            Reps
                           </label>
                           <input
                             type="text"
-                            placeholder="e.g. 15"
+                            placeholder="e.g. 8-12"
                             value={ex.repRange}
                             onChange={(e) => updateExercise(idx, { repRange: e.target.value })}
                             style={{
@@ -586,111 +624,70 @@ function BuilderPage() {
                               background: "oklch(0.14 0.005 250)",
                               border: "1px solid oklch(0.24 0.005 250)",
                               color: "white",
-                              padding: "6px 8px",
-                              borderRadius: 6,
-                              fontSize: 13,
+                              padding: "5px 8px",
+                              borderRadius: 4,
+                              fontSize: 12.5,
                             }}
                           />
                         </div>
-                      ) : (
-                        <>
-                          <div>
-                            <label style={{ display: "block", fontSize: 10.5, color: "oklch(0.55 0.01 250)", marginBottom: 3 }}>
-                              Sets
-                            </label>
-                            <input
-                              type="number"
-                              min="1"
-                              value={ex.sets}
-                              onChange={(e) => updateExercise(idx, { sets: Number(e.target.value) })}
-                              style={{
-                                width: "100%",
-                                background: "oklch(0.14 0.005 250)",
-                                border: "1px solid oklch(0.24 0.005 250)",
-                                color: "white",
-                                padding: "6px 8px",
-                                borderRadius: 6,
-                                fontSize: 13,
-                              }}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ display: "block", fontSize: 10.5, color: "oklch(0.55 0.01 250)", marginBottom: 3 }}>
-                              Reps
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="e.g. 8-12"
-                              value={ex.repRange}
-                              onChange={(e) => updateExercise(idx, { repRange: e.target.value })}
-                              style={{
-                                width: "100%",
-                                background: "oklch(0.14 0.005 250)",
-                                border: "1px solid oklch(0.24 0.005 250)",
-                                color: "white",
-                                padding: "6px 8px",
-                                borderRadius: 6,
-                                fontSize: 13,
-                              }}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ display: "block", fontSize: 10.5, color: "oklch(0.55 0.01 250)", marginBottom: 3 }}>
-                              Rest (s)
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="15"
-                              value={ex.restSeconds}
-                              onChange={(e) => updateExercise(idx, { restSeconds: Number(e.target.value) })}
-                              style={{
-                                width: "100%",
-                                background: "oklch(0.14 0.005 250)",
-                                border: "1px solid oklch(0.24 0.005 250)",
-                                color: "white",
-                                padding: "6px 8px",
-                                borderRadius: 6,
-                                fontSize: 13,
-                              }}
-                            />
-                          </div>
-                        </>
-                      )}
-                    </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: 10, color: "oklch(0.55 0.01 250)", marginBottom: 2 }}>
+                            Rest (s)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="15"
+                            value={ex.restSeconds}
+                            onChange={(e) => updateExercise(idx, { restSeconds: Number(e.target.value) })}
+                            style={{
+                              width: "100%",
+                              background: "oklch(0.14 0.005 250)",
+                              border: "1px solid oklch(0.24 0.005 250)",
+                              color: "white",
+                              padding: "5px 8px",
+                              borderRadius: 4,
+                              fontSize: 12.5,
+                            }}
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-        {/* VIEW 2: Exercise Library & Body Map */}
-        {(mobileTab === "library" || typeof window !== "undefined" && window.innerWidth >= 900) && (
-          <div
-            style={{
-              background: "oklch(0.12 0.005 250)",
-              border: "1px solid oklch(0.24 0.005 250)",
-              borderRadius: 14,
-              padding: "16px 14px",
-            }}
-          >
-            {/* Header & Body Map Toggle */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "white" }}>
-                  Exercise Library
-                </h3>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "oklch(0.55 0.01 250)" }}>
-                  Adding to <strong>{DAY_SHORT[activeDayIdx]}</strong>
-                </p>
-              </div>
+        {/* PANEL 2: Exercise Library & Body Map */}
+        <div
+          className="builder-lib-panel"
+          style={{
+            background: "oklch(0.12 0.005 250)",
+            border: "1px solid oklch(0.24 0.005 250)",
+            borderRadius: 12,
+            padding: "14px 12px",
+          }}
+        >
+          {/* Header & Done button for mobile */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "white" }}>
+                Add to {DAY_SHORT[activeDayIdx]}
+              </h3>
+              <p style={{ margin: "1px 0 0", fontSize: 11, color: "oklch(0.55 0.01 250)" }}>
+                {activeDay.exercises.length} exercises selected
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 6 }}>
               <button
                 onClick={() => setShowBodyMap((v) => !v)}
                 style={{
-                  fontSize: 11.5,
+                  fontSize: 11,
                   fontWeight: 600,
-                  padding: "5px 10px",
+                  padding: "4px 8px",
                   borderRadius: 6,
                   border: "1px solid oklch(0.25 0.01 250)",
                   background: showBodyMap ? "oklch(0.92 0.25 110 / 15%)" : "oklch(0.16 0.005 250)",
@@ -698,189 +695,207 @@ function BuilderPage() {
                   cursor: "pointer",
                 }}
               >
-                {showBodyMap ? "Hide Body Model" : "🧍 Muscle Model"}
+                {showBodyMap ? "Hide Model" : "🧍 Model"}
+              </button>
+
+              <button
+                onClick={() => setMobileTab("day")}
+                className="md:hidden"
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: "4px 10px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: "oklch(0.92 0.25 110)",
+                  color: "oklch(0.07 0.01 110)",
+                  cursor: "pointer",
+                }}
+              >
+                Done ✓
               </button>
             </div>
+          </div>
 
-            {/* Interactive Anatomical Body Map */}
-            {showBodyMap && (
-              <div style={{ marginBottom: 14, overflowX: "auto", paddingBottom: 4 }}>
-                <BodyMap
-                  size="sm"
-                  selectedMuscle={selectedBodySlug}
-                  onSelectMuscle={(slug, name) => {
-                    setSelectedBodySlug(slug);
-                    const mapped = BODY_MAP_TO_SEARCH_TERMS[slug] || name;
-                    setSelectedMuscle(mapped);
+          {/* Interactive Anatomical Body Map */}
+          {showBodyMap && (
+            <div style={{ marginBottom: 12, width: "100%" }}>
+              <BodyMap
+                size="sm"
+                selectedMuscle={selectedBodySlug}
+                onSelectMuscle={(slug, name) => {
+                  setSelectedBodySlug(slug);
+                  const mapped = BODY_MAP_TO_SEARCH_TERMS[slug] || name;
+                  setSelectedMuscle(mapped);
+                }}
+              />
+            </div>
+          )}
+
+          {/* Muscle Filter Chips */}
+          <div
+            style={{
+              display: "flex",
+              gap: 5,
+              overflowX: "auto",
+              paddingBottom: 6,
+              marginBottom: 10,
+              WebkitOverflowScrolling: "touch",
+              scrollbarWidth: "none",
+              width: "100%",
+            }}
+          >
+            {MUSCLE_FILTER_CHIPS.map((m) => {
+              const isCurrent = selectedMuscle === m;
+              return (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setSelectedMuscle(m);
+                    setSelectedBodySlug(null);
                   }}
-                />
-              </div>
-            )}
+                  style={{
+                    flexShrink: 0,
+                    padding: "3px 8px",
+                    borderRadius: 999,
+                    border: "none",
+                    background: isCurrent ? "oklch(0.92 0.25 110)" : "oklch(0.18 0.01 250)",
+                    color: isCurrent ? "oklch(0.07 0.01 110)" : "oklch(0.75 0.01 250)",
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {m}
+                </button>
+              );
+            })}
+          </div>
 
-            {/* Muscle Filter Chips (Horizontal Scrollable) */}
-            <div
-              style={{
-                display: "flex",
-                gap: 6,
-                overflowX: "auto",
-                paddingBottom: 8,
-                marginBottom: 12,
-                WebkitOverflowScrolling: "touch",
-                scrollbarWidth: "none",
-              }}
-            >
-              {MUSCLE_FILTER_CHIPS.map((m) => {
-                const isCurrent = selectedMuscle === m;
+          {/* Search Input */}
+          <input
+            type="text"
+            placeholder={`Search ${selectedMuscle === "All" ? "1,300+ exercises..." : `${selectedMuscle.toLowerCase()} movements...`}`}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              width: "100%",
+              background: "oklch(0.08 0.004 250)",
+              border: "1px solid oklch(0.22 0.005 250)",
+              color: "white",
+              padding: "8px 10px",
+              borderRadius: 6,
+              fontSize: 12.5,
+              marginBottom: 10,
+              outline: "none",
+            }}
+          />
+
+          {/* Exercise Results List */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              maxHeight: "52vh",
+              overflowY: "auto",
+              width: "100%",
+            }}
+          >
+            {loadingSearch ? (
+              <div style={{ textAlign: "center", padding: "20px 0", color: "oklch(0.5 0.01 250)", fontSize: 12 }}>
+                Loading exercises...
+              </div>
+            ) : results?.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "20px 0", color: "oklch(0.5 0.01 250)", fontSize: 12 }}>
+                No exercises found.
+              </div>
+            ) : (
+              results?.map((ex) => {
+                const isAdded = !!activeDay.exercises.find((e) => e.exerciseId === ex.id);
                 return (
-                  <button
-                    key={m}
-                    onClick={() => {
-                      setSelectedMuscle(m);
-                      setSelectedBodySlug(null);
-                    }}
+                  <div
+                    key={ex.id}
+                    onClick={() => toggleAddExercise(ex)}
                     style={{
-                      flexShrink: 0,
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      border: "none",
-                      background: isCurrent ? "oklch(0.92 0.25 110)" : "oklch(0.18 0.01 250)",
-                      color: isCurrent ? "oklch(0.07 0.01 110)" : "oklch(0.75 0.01 250)",
-                      fontSize: 11,
-                      fontWeight: 700,
+                      padding: "8px 10px",
+                      background: isAdded ? "oklch(0.18 0.01 250)" : "oklch(0.09 0.004 250)",
+                      border: isAdded ? "1px solid oklch(0.92 0.25 110 / 40%)" : "1px solid oklch(0.2 0.005 250)",
+                      borderRadius: 6,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
                       cursor: "pointer",
                       transition: "all 0.15s",
                     }}
                   >
-                    {m}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Search Input */}
-            <input
-              type="text"
-              placeholder={`Search ${selectedMuscle === "All" ? "1,300+ exercises..." : `${selectedMuscle.toLowerCase()} movements...`}`}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{
-                width: "100%",
-                background: "oklch(0.08 0.004 250)",
-                border: "1px solid oklch(0.22 0.005 250)",
-                color: "white",
-                padding: "9px 12px",
-                borderRadius: 8,
-                fontSize: 13,
-                marginBottom: 12,
-                outline: "none",
-              }}
-            />
-
-            {/* Exercise Results List */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                maxHeight: "55vh",
-                overflowY: "auto",
-                paddingRight: 2,
-              }}
-            >
-              {loadingSearch ? (
-                <div style={{ textAlign: "center", padding: "24px 0", color: "oklch(0.5 0.01 250)", fontSize: 13 }}>
-                  Loading exercises...
-                </div>
-              ) : results?.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "24px 0", color: "oklch(0.5 0.01 250)", fontSize: 13 }}>
-                  No exercises found.
-                </div>
-              ) : (
-                results?.map((ex) => {
-                  const isAdded = !!activeDay.exercises.find((e) => e.exerciseId === ex.id);
-                  return (
-                    <div
-                      key={ex.id}
-                      onClick={() => toggleAddExercise(ex)}
-                      style={{
-                        padding: "10px 12px",
-                        background: isAdded ? "oklch(0.18 0.01 250)" : "oklch(0.09 0.004 250)",
-                        border: isAdded ? "1px solid oklch(0.92 0.25 110 / 40%)" : "1px solid oklch(0.2 0.005 250)",
-                        borderRadius: 8,
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 10,
-                        cursor: "pointer",
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: "white",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {ex.name}
-                        </div>
-                        <div style={{ display: "flex", gap: 4, marginTop: 3, flexWrap: "wrap" }}>
-                          {ex.primary_muscle && (
-                            <span
-                              style={{
-                                fontSize: 10,
-                                background: "oklch(0.22 0.005 250)",
-                                color: "oklch(0.75 0.01 250)",
-                                padding: "1px 5px",
-                                borderRadius: 4,
-                              }}
-                            >
-                              {ex.primary_muscle}
-                            </span>
-                          )}
-                          {ex.equipment && (
-                            <span
-                              style={{
-                                fontSize: 10,
-                                background: "oklch(0.16 0.005 250)",
-                                color: "oklch(0.6 0.01 250)",
-                                padding: "1px 5px",
-                                borderRadius: 4,
-                              }}
-                            >
-                              {ex.equipment}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <button
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
                         style={{
-                          background: isAdded ? "oklch(0.2 0.05 30)" : "oklch(0.92 0.25 110)",
-                          color: isAdded ? "oklch(0.7 0.15 40)" : "oklch(0.07 0.01 110)",
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "5px 10px",
-                          fontSize: 11.5,
-                          fontWeight: 700,
-                          cursor: "pointer",
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          color: "white",
                           whiteSpace: "nowrap",
-                          flexShrink: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
                         }}
                       >
-                        {isAdded ? "Remove" : "+ Add"}
-                      </button>
+                        {ex.name}
+                      </div>
+                      <div style={{ display: "flex", gap: 4, marginTop: 2, flexWrap: "wrap" }}>
+                        {ex.primary_muscle && (
+                          <span
+                            style={{
+                              fontSize: 9.5,
+                              background: "oklch(0.22 0.005 250)",
+                              color: "oklch(0.75 0.01 250)",
+                              padding: "1px 4px",
+                              borderRadius: 3,
+                            }}
+                          >
+                            {ex.primary_muscle}
+                          </span>
+                        )}
+                        {ex.equipment && (
+                          <span
+                            style={{
+                              fontSize: 9.5,
+                              background: "oklch(0.16 0.005 250)",
+                              color: "oklch(0.6 0.01 250)",
+                              padding: "1px 4px",
+                              borderRadius: 3,
+                            }}
+                          >
+                            {ex.equipment}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  );
-                })
-              )}
-            </div>
+
+                    <button
+                      style={{
+                        background: isAdded ? "oklch(0.2 0.05 30)" : "oklch(0.92 0.25 110)",
+                        color: isAdded ? "oklch(0.7 0.15 40)" : "oklch(0.07 0.01 110)",
+                        border: "none",
+                        borderRadius: 4,
+                        padding: "4px 8px",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {isAdded ? "Remove" : "+ Add"}
+                    </button>
+                  </div>
+                );
+              })
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
