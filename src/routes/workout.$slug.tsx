@@ -101,10 +101,6 @@ function WorkoutPage() {
 
     if (todaySession) {
       setSessionStarted(true);
-      // Resume immediately — don't make the whole page wait on this network round
-      // trip. Backfill any exercise_sessions the plan gained since this session was
-      // first created (e.g. an exercise was swapped in later) in the background, and
-      // only refetch session detail if it actually added something.
       setSessionId(todaySession.id);
       ensureExerciseSessions(user.id, todaySession.id, plan.exercises)
         .then((backfilled) => {
@@ -118,16 +114,30 @@ function WorkoutPage() {
     setSessionStarted(true);
     startSession({ userId: user.id, day: plan.day, exercises: plan.exercises })
       .then((s) => setSessionId(s.id))
-      .catch((e) => toast.error(e.message));
+      .catch((e) => {
+        setSessionStarted(false);
+        toast.error(e.message || "Failed to start session");
+      });
   }, [user, plan, sessionId, autoStart, sessionStarted, todaySession, todaySessionLoading, qc]);
 
   function handleManualStart() {
-    if (!user || !plan?.day || sessionId || sessionStarted) return;
+    if (!user) {
+      toast.info("Please sign in to start and save workouts");
+      router.navigate({ to: "/auth" });
+      return;
+    }
+    if (!plan?.day || sessionId || sessionStarted) return;
     setSessionStarted(true);
     setNowMs(Date.now());
     startSession({ userId: user.id, day: plan.day, exercises: plan.exercises })
-      .then((s) => setSessionId(s.id))
-      .catch((e) => toast.error(e.message));
+      .then((s) => {
+        setSessionId(s.id);
+        toast.success("Workout started!");
+      })
+      .catch((e) => {
+        setSessionStarted(false);
+        toast.error(e.message || "Failed to start workout");
+      });
   }
 
   const { data: detail } = useQuery({
@@ -719,7 +729,9 @@ function WorkoutPage() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {plan.exercises.map((we) => {
-            const es = detail?.exSessions.find((e) => e.workout_exercise_id === we.id);
+            const es = detail?.exSessions.find(
+              (e) => e.workout_exercise_id === we.id || e.exercise_id === we.exercise_id
+            );
             return (
               <ExerciseCard
                 key={we.id}

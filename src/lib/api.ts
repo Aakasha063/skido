@@ -380,8 +380,8 @@ export async function createCustomPlan(userId: string, days: CustomDayInput[]) {
         day_id: insertedDay.id,
         exercise_id: ex.exerciseId,
         position: index,
-        target_sets: ex.sets || 3,
-        target_reps: ex.repRange || "8-12",
+        sets: ex.sets || 3,
+        rep_range: ex.repRange || "8-12",
         rest_seconds: ex.restSeconds || 120,
       });
     });
