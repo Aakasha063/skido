@@ -67,7 +67,7 @@ function WorkoutPage() {
     volume: number;
     prs: number;
   } | null>(null);
-  const [rest, setRest] = useState<{ seconds: number; key: number } | null>(null);
+  const [rest, setRest] = useState<{ seconds: number; key: number; exerciseName?: string } | null>(null);
   const [info, setInfo] = useState<Exercise | null>(null);
   const [startedAt, setStartedAt] = useState(() => Date.now());
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -187,6 +187,7 @@ function WorkoutPage() {
       prs: prs.length,
     });
 
+    clearWorkoutNotification();
     qc.invalidateQueries();
   }, [user, sessionId, finishing, isCompletedToday, startedAt, qc, validSets, plan, completedSets]);
 
@@ -214,10 +215,28 @@ function WorkoutPage() {
     ? (detail?.session.duration_seconds ?? 0)
     : Math.round((nowMs - startedAt) / 1000);
   const workoutElapsedLabel = mmss(elapsedSeconds);
-  const workoutPct = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
-
   // Calculate total volume for this session
   const sessionVolume = validSets.reduce((acc, s) => acc + (s.weight_kg ?? 0) * (s.reps ?? 0), 0);
+
+  // Keep active workout notification updated on lock screen
+  useEffect(() => {
+    if (!sessionId || isCompletedToday) return;
+
+    function onVisibilityChange() {
+      if (document.visibilityState === "hidden" && !isCompletedToday) {
+        showWorkoutNotification({
+          title: `🏋️ ${plan?.day?.name || "Workout"} in Progress`,
+          body: `${completedSets}/${totalSets} sets completed · ${workoutElapsedLabel}`,
+          tag: "active-workout",
+        });
+      }
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [sessionId, isCompletedToday, plan?.day?.name, completedSets, totalSets, workoutElapsedLabel]);
 
   // Keep showing the skeleton until we know whether we're resuming an existing
   // session AND its logged sets have loaded — otherwise the page briefly renders
@@ -696,7 +715,11 @@ function WorkoutPage() {
                 onInfo={() => setInfo(we.exercises)}
                 onLogged={() => {
                   qc.invalidateQueries({ queryKey: ["session", sessionId] });
-                  setRest({ seconds: we.rest_seconds ?? 90, key: Date.now() });
+                  setRest({
+                    seconds: we.rest_seconds ?? 90,
+                    key: Date.now(),
+                    exerciseName: we.exercises?.name,
+                  });
                 }}
               />
             );
@@ -710,7 +733,12 @@ function WorkoutPage() {
         onOpenChange={(v) => !v && setInfo(null)}
       />
       {rest && rest.seconds > 0 && (
-        <RestTimer key={rest.key} seconds={rest.seconds} onDismiss={() => setRest(null)} />
+        <RestTimer
+          key={rest.key}
+          seconds={rest.seconds}
+          exerciseName={rest.exerciseName}
+          onDismiss={() => setRest(null)}
+        />
       )}
 
       {/* Fixed bottom bar — active workout only (design lines 481-491) */}
