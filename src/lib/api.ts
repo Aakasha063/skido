@@ -700,6 +700,31 @@ export async function setActiveTemplate(userId: string, templateId: string) {
   if (error) throw error;
 }
 
+/** A template's days with their exercises, for previewing a curated plan before switching to it. */
+export async function fetchTemplatePreview(templateId: string) {
+  const { data: days, error } = await supabase
+    .from("workout_days")
+    .select("*")
+    .eq("template_id", templateId)
+    .order("sort_order");
+  if (error) throw error;
+
+  const dayIds = (days ?? []).map((d) => d.id);
+  if (dayIds.length === 0) return [];
+
+  const { data: exercises, error: exErr } = await supabase
+    .from("workout_exercises")
+    .select("*, exercises(name)")
+    .in("day_id", dayIds)
+    .order("position");
+  if (exErr) throw exErr;
+
+  return (days ?? []).map((d) => ({
+    ...d,
+    exercises: (exercises ?? []).filter((e) => e.day_id === d.id) as (WorkoutExercise)[],
+  }));
+}
+
 export async function fetchWorkoutTemplateBySlug(slug: string) {
   const { data, error } = await supabase
     .from("workout_templates")

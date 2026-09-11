@@ -8,6 +8,7 @@ import {
   fetchDays,
   fetchHistory,
   fetchProfile,
+  fetchTemplatePreview,
   fetchWorkoutTemplate,
   fetchWorkoutTemplates,
   setActiveTemplate,
@@ -73,6 +74,12 @@ function PlanPage() {
   const [selectedOptSlug, setSelectedOptSlug] = useState<string | null>(null);
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
+  const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
+  const { data: previewDays, isLoading: previewLoading } = useQuery({
+    queryKey: ["template-preview", previewTemplateId],
+    queryFn: () => fetchTemplatePreview(previewTemplateId!),
+    enabled: !!previewTemplateId,
+  });
 
   async function switchTemplate(templateId: string) {
     if (!user || templateId === profile?.active_template_id) return;
@@ -348,6 +355,111 @@ function PlanPage() {
                         <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "oklch(0.63 0.006 250)", lineHeight: 1.5 }}>
                           {t.description}
                         </p>
+                      )}
+                      <button
+                        onClick={() => setPreviewTemplateId(previewTemplateId === t.id ? null : t.id)}
+                        style={{
+                          marginTop: 8,
+                          background: "transparent",
+                          border: "none",
+                          color: "oklch(0.92 0.25 110)",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          padding: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        {previewTemplateId === t.id ? "Hide preview" : "Preview this plan"}
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          style={{
+                            transform: previewTemplateId === t.id ? "rotate(180deg)" : "none",
+                            transition: "transform 0.15s",
+                          }}
+                        >
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </button>
+
+                      {previewTemplateId === t.id && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            paddingTop: 12,
+                            borderTop: "1px solid oklch(0.22 0.005 250)",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 10,
+                          }}
+                        >
+                          {previewLoading ? (
+                            <p style={{ margin: 0, fontSize: 12, color: "oklch(0.45 0.006 250)" }}>
+                              Loading…
+                            </p>
+                          ) : (previewDays ?? []).length === 0 ? (
+                            <p style={{ margin: 0, fontSize: 12, color: "oklch(0.45 0.006 250)" }}>
+                              No days found for this plan.
+                            </p>
+                          ) : (
+                            (previewDays ?? []).map((d) => (
+                              <div key={d.id}>
+                                <p
+                                  style={{
+                                    margin: 0,
+                                    fontSize: 12.5,
+                                    fontWeight: 600,
+                                    color: d.is_rest ? "oklch(0.5 0.006 250)" : "inherit",
+                                  }}
+                                >
+                                  {d.day_of_week != null && (
+                                    <span style={{ color: "oklch(0.63 0.006 250)" }}>
+                                      {DAY_LABELS[d.day_of_week]!.toUpperCase()}{" "}
+                                    </span>
+                                  )}
+                                  {d.is_rest ? "Rest day" : (d.focus ?? d.name)}
+                                  {d.is_optional && (
+                                    <span style={{ fontWeight: 400, color: "oklch(0.45 0.006 250)" }}>
+                                      {" "}
+                                      · optional
+                                    </span>
+                                  )}
+                                </p>
+                                {d.exercises.length > 0 && (
+                                  <ul
+                                    style={{
+                                      margin: "4px 0 0",
+                                      paddingLeft: 16,
+                                      fontSize: 12,
+                                      color: "oklch(0.63 0.006 250)",
+                                      lineHeight: 1.7,
+                                    }}
+                                  >
+                                    {d.exercises.map((ex) => (
+                                      <li key={ex.id}>
+                                        {ex.exercises?.name ?? "Exercise"} — {ex.sets} × {ex.rep_range}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                                {d.cardio_note && (
+                                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "oklch(0.5 0.006 250)" }}>
+                                    Cardio: {d.cardio_note}
+                                  </p>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
                       )}
                     </div>
                   );
