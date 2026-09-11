@@ -8,18 +8,29 @@ export type WorkoutExercise = Tables<"workout_exercises"> & { exercises: Exercis
 export type SessionRow = Tables<"workout_sessions">;
 export type SetRow = Tables<"sets">;
 export type ExerciseSession = Tables<"exercise_sessions">;
+export type WorkoutTemplate = Tables<"workout_templates">;
 
-export async function fetchDays(userId?: string) {
+/**
+ * `activeTemplateId` scopes which curated (user_id IS NULL) days are visible.
+ * Omitted/undefined falls back to showing every curated template's days —
+ * needed for callers (e.g. the plan builder) that don't care which template
+ * a day belongs to, and as a safe default before a profile has loaded.
+ */
+export async function fetchDays(userId?: string, activeTemplateId?: string | null) {
   let query = supabase
     .from("workout_days")
     .select("*, workout_exercises(id)")
     .order("sort_order");
-    
+
   const validUid = typeof userId === "string" && userId.trim() ? userId.trim() : null;
   if (validUid) {
-    query = query.or(`user_id.is.null,user_id.eq.${validUid}`);
+    query = activeTemplateId
+      ? query.or(`and(user_id.is.null,template_id.eq.${activeTemplateId}),user_id.eq.${validUid}`)
+      : query.or(`user_id.is.null,user_id.eq.${validUid}`);
   } else {
-    query = query.is("user_id", null);
+    query = activeTemplateId
+      ? query.is("user_id", null).eq("template_id", activeTemplateId)
+      : query.is("user_id", null);
   }
 
   const { data, error } = await query;
@@ -30,7 +41,11 @@ export async function fetchDays(userId?: string) {
   }));
 }
 
-export async function fetchDayWithExercises(slug: string, userId?: string) {
+export async function fetchDayWithExercises(
+  slug: string,
+  userId?: string,
+  activeTemplateId?: string | null,
+) {
   let query = supabase
     .from("workout_days")
     .select("*")
@@ -38,9 +53,13 @@ export async function fetchDayWithExercises(slug: string, userId?: string) {
 
   const validUid = typeof userId === "string" && userId.trim() ? userId.trim() : null;
   if (validUid) {
-    query = query.or(`user_id.is.null,user_id.eq.${validUid}`);
+    query = activeTemplateId
+      ? query.or(`and(user_id.is.null,template_id.eq.${activeTemplateId}),user_id.eq.${validUid}`)
+      : query.or(`user_id.is.null,user_id.eq.${validUid}`);
   } else {
-    query = query.is("user_id", null);
+    query = activeTemplateId
+      ? query.is("user_id", null).eq("template_id", activeTemplateId)
+      : query.is("user_id", null);
   }
 
   const { data: dayRows, error } = await query;
@@ -647,6 +666,45 @@ export async function fetchProfile(userId: string) {
     .from("profiles")
     .select("*")
     .eq("id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchWorkoutTemplate(templateId?: string | null) {
+  if (!templateId) return null;
+  const { data, error } = await supabase
+    .from("workout_templates")
+    .select("*")
+    .eq("id", templateId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/** All curated plans available to switch between (e.g. in the Plan page's "Change plan" picker). */
+export async function fetchWorkoutTemplates() {
+  const { data, error } = await supabase
+    .from("workout_templates")
+    .select("*")
+    .order("created_at");
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function setActiveTemplate(userId: string, templateId: string) {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ active_template_id: templateId, updated_at: new Date().toISOString() })
+    .eq("id", userId);
+  if (error) throw error;
+}
+
+export async function fetchWorkoutTemplateBySlug(slug: string) {
+  const { data, error } = await supabase
+    .from("workout_templates")
+    .select("*")
+    .eq("slug", slug)
     .maybeSingle();
   if (error) throw error;
   return data;

@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
-import { saveProfile } from "@/lib/api";
+import { saveProfile, fetchWorkoutTemplateBySlug } from "@/lib/api";
 import { navyBodyFat } from "@/lib/bodyFat";
 import { calculateCalorieTarget } from "@/lib/calories";
 import { GOALS, type GoalKey } from "@/lib/goals";
@@ -64,6 +64,15 @@ const PLANS = [
     badge: "Recommended",
   },
   {
+    id: "toned-physique",
+    name: "Toned Physique Plan",
+    subtitle: "5 days, lower-body emphasis",
+    description: "Glute/quad/hamstring-focused lower days plus balanced upper-body accessory work. Hypertrophy and general fitness, beginner to intermediate.",
+    minDays: 5,
+    available: true,
+    badge: "Recommended",
+  },
+  {
     id: "ppl",
     name: "Push / Pull / Legs",
     subtitle: "6 days, rest on Sunday",
@@ -94,7 +103,14 @@ const PLANS = [
 
 type PlanId = (typeof PLANS)[number]["id"];
 
-function recommendedPlan(gymDays: number): PlanId {
+/** Curated plans that persist a real workout_templates row on enrollment (matched by slug). */
+const PLAN_TEMPLATE_SLUGS: Partial<Record<PlanId, string>> = {
+  "v-taper": "v-taper-fat-loss",
+  "toned-physique": "toned-physique-plan",
+};
+
+function recommendedPlan(gymDays: number, sex: "male" | "female"): PlanId {
+  if (sex === "female") return "toned-physique";
   if (gymDays >= 6) return "ppl";
   if (gymDays >= 4) return "v-taper";
   if (gymDays >= 3) return "3day-fullbody";
@@ -123,7 +139,7 @@ export function Onboarding() {
   const [selectedPlan, setSelectedPlan] = useState<PlanId | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const effectivePlanId = selectedPlan ?? recommendedPlan(gymDays);
+  const effectivePlanId = selectedPlan ?? recommendedPlan(gymDays, sex);
 
   async function finish(skip: boolean, customPlan = false) {
     if (!user) return;
@@ -145,6 +161,14 @@ export function Onboarding() {
         if (goal) patch.primary_goal = goal;
         patch.gym_days_per_week = gymDays;
         if (injuries.trim()) patch.past_injuries = injuries.trim();
+
+        if (!customPlan) {
+          const templateSlug = PLAN_TEMPLATE_SLUGS[effectivePlanId];
+          if (templateSlug) {
+            const template = await fetchWorkoutTemplateBySlug(templateSlug);
+            if (template) patch.active_template_id = template.id;
+          }
+        }
       }
 
       await saveProfile(user.id, patch);
@@ -531,13 +555,13 @@ export function Onboarding() {
               Choose your training plan
             </h1>
             <p style={{ margin: "8px 0 28px", fontSize: 14, color: "oklch(0.63 0.006 250)" }}>
-              Based on your schedule ({gymDays} day{gymDays !== 1 ? "s" : ""}/week) we've highlighted the best fit.
-              You can switch plans at any time from the Plan page.
+              Based on your profile we've highlighted the best fit. You can switch plans at any time
+              from the Plan page.
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {PLANS.map((plan) => {
-                const isRecommended = plan.id === recommendedPlan(gymDays);
+                const isRecommended = plan.id === recommendedPlan(gymDays, sex);
                 const isSelected = effectivePlanId === plan.id;
                 return (
                   <button

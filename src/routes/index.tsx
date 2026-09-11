@@ -92,9 +92,14 @@ function IndexRoute() {
 
 function Dashboard() {
   const { user } = useAuth();
-  const { data: days } = useQuery({ 
-    queryKey: ["days", user?.id], 
-    queryFn: () => fetchDays(user?.id),
+  const { data: profile } = useQuery({
+    queryKey: ["profile", user?.id],
+    queryFn: () => fetchProfile(user!.id),
+    enabled: !!user,
+  });
+  const { data: days } = useQuery({
+    queryKey: ["days", user?.id, profile?.active_template_id],
+    queryFn: () => fetchDays(user?.id, profile?.active_template_id),
   });
   const { data: history } = useQuery({
     queryKey: ["history", user?.id],
@@ -109,11 +114,6 @@ function Dashboard() {
   const { data: metrics } = useQuery({
     queryKey: ["metrics", user?.id],
     queryFn: () => fetchBodyMetrics(user!.id),
-    enabled: !!user,
-  });
-  const { data: profile } = useQuery({
-    queryKey: ["profile", user?.id],
-    queryFn: () => fetchProfile(user!.id),
     enabled: !!user,
   });
 

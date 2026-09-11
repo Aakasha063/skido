@@ -1,9 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
-import { fetchDays, fetchHistory, fetchProfile } from "@/lib/api";
+import {
+  fetchDays,
+  fetchHistory,
+  fetchProfile,
+  fetchWorkoutTemplate,
+  fetchWorkoutTemplates,
+  setActiveTemplate,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { todayISO, DAY_LABELS } from "@/lib/format";
 import { buildWeekStatus } from "@/lib/weekStatus";
@@ -29,8 +37,8 @@ export const Route = createFileRoute("/plan")({
   ),
 });
 
-/** Single-plan roster for now — becomes a real table once multiple plans ship. */
-const PLAN_INFO = {
+/** Fallback shown until the assigned template has loaded (or for profiles predating multi-plan support). */
+const FALLBACK_PLAN_INFO = {
   name: "V-Taper + Fat-Loss",
   subtitle: "5 mandatory sessions",
   meta: "Saturday optional · Sunday recovery",
@@ -38,22 +46,49 @@ const PLAN_INFO = {
 
 function PlanPage() {
   const { user } = useAuth();
-  const { data: days } = useQuery({ 
-    queryKey: ["days", user?.id], 
-    queryFn: () => fetchDays(user?.id),
+  const qc = useQueryClient();
+  const { data: profile } = useQuery({
+    queryKey: ["profile", user?.id],
+    queryFn: () => fetchProfile(user!.id),
+    enabled: !!user,
+  });
+  const { data: days } = useQuery({
+    queryKey: ["days", user?.id, profile?.active_template_id],
+    queryFn: () => fetchDays(user?.id, profile?.active_template_id),
   });
   const { data: history } = useQuery({
     queryKey: ["history", user?.id],
     queryFn: () => fetchHistory(user!.id),
     enabled: !!user,
   });
-  const { data: profile } = useQuery({
-    queryKey: ["profile", user?.id],
-    queryFn: () => fetchProfile(user!.id),
-    enabled: !!user,
+  const { data: template } = useQuery({
+    queryKey: ["workout-template", profile?.active_template_id],
+    queryFn: () => fetchWorkoutTemplate(profile?.active_template_id),
+    enabled: !!profile?.active_template_id,
+  });
+  const { data: allTemplates } = useQuery({
+    queryKey: ["workout-templates"],
+    queryFn: fetchWorkoutTemplates,
   });
   const [selectedOptSlug, setSelectedOptSlug] = useState<string | null>(null);
   const [planModalOpen, setPlanModalOpen] = useState(false);
+  const [switching, setSwitching] = useState<string | null>(null);
+
+  async function switchTemplate(templateId: string) {
+    if (!user || templateId === profile?.active_template_id) return;
+    setSwitching(templateId);
+    try {
+      await setActiveTemplate(user.id, templateId);
+      await qc.invalidateQueries({ queryKey: ["profile", user.id] });
+      await qc.invalidateQueries({ queryKey: ["days", user.id] });
+      toast.success("Plan switched");
+      setPlanModalOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to switch plan");
+    } finally {
+      setSwitching(null);
+    }
+  }
 
   const hasCustomPlan = (days ?? []).some((d) => d.is_custom);
   const activeDays = hasCustomPlan
@@ -63,6 +98,14 @@ function PlanPage() {
   const mandatory = activeDays.filter((d) => !d.is_optional && d.day_of_week !== 0);
   const optional = activeDays.filter((d) => d.is_optional && d.day_of_week !== 0);
   const sunday = activeDays.find((d) => d.day_of_week === 0);
+
+  const planInfo = template
+    ? {
+        name: template.name,
+        subtitle: `${mandatory.length} mandatory session${mandatory.length === 1 ? "" : "s"}`,
+        meta: optional.length > 0 ? "Saturday optional · Sunday recovery" : "",
+      }
+    : FALLBACK_PLAN_INFO;
 
   const { statusFor, weekStartISO, weekEndISO } = buildWeekStatus(
     history ?? [],
@@ -155,10 +198,12 @@ function PlanPage() {
               letterSpacing: "-0.02em",
             }}
           >
-            {hasCustomPlan ? "Custom Weekly Plan" : PLAN_INFO.name}
+            {hasCustomPlan ? "Custom Weekly Plan" : planInfo.name}
           </h1>
           <p style={{ margin: "6px 0 0", fontSize: 14, color: "oklch(0.63 0.006 250)" }}>
-            {hasCustomPlan ? "Your personal routine" : `${PLAN_INFO.subtitle} · ${PLAN_INFO.meta}`}
+            {hasCustomPlan
+              ? "Your personal routine"
+              : [planInfo.subtitle, planInfo.meta].filter(Boolean).join(" · ")}
           </p>
         </div>
         <button
@@ -243,39 +288,70 @@ function PlanPage() {
                   </svg>
                 </button>
               </div>
-              <div
-                style={{
-                  border: "1px solid oklch(0.92 0.25 110 / 50%)",
-                  borderRadius: 12,
-                  padding: 14,
-                  background: "oklch(0.92 0.25 110 / 8%)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                  }}
-                >
-                  <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{PLAN_INFO.name}</p>
-                  <span
-                    style={{
-                      borderRadius: 6,
-                      background: "oklch(0.92 0.25 110)",
-                      color: "oklch(0.07 0.01 110)",
-                      padding: "2px 8px",
-                      fontSize: 11,
-                      fontWeight: 600,
-                    }}
-                  >
-                    Enrolled
-                  </span>
-                </div>
-                <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "oklch(0.63 0.006 250)" }}>
-                  {PLAN_INFO.subtitle} · {PLAN_INFO.meta}
-                </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {(allTemplates ?? []).map((t) => {
+                  const isEnrolled = t.id === profile?.active_template_id;
+                  return (
+                    <div
+                      key={t.id}
+                      style={{
+                        border: `1px solid ${isEnrolled ? "oklch(0.92 0.25 110 / 50%)" : "oklch(0.27 0.005 250)"}`,
+                        borderRadius: 12,
+                        padding: 14,
+                        background: isEnrolled ? "oklch(0.92 0.25 110 / 8%)" : "transparent",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                        }}
+                      >
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{t.name}</p>
+                        {isEnrolled ? (
+                          <span
+                            style={{
+                              flexShrink: 0,
+                              borderRadius: 6,
+                              background: "oklch(0.92 0.25 110)",
+                              color: "oklch(0.07 0.01 110)",
+                              padding: "2px 8px",
+                              fontSize: 11,
+                              fontWeight: 600,
+                            }}
+                          >
+                            Enrolled
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => switchTemplate(t.id)}
+                            disabled={switching === t.id}
+                            style={{
+                              flexShrink: 0,
+                              borderRadius: 6,
+                              border: "1px solid oklch(0.4 0.01 250)",
+                              background: "transparent",
+                              color: "white",
+                              padding: "4px 10px",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: switching === t.id ? "wait" : "pointer",
+                            }}
+                          >
+                            {switching === t.id ? "Switching…" : "Switch"}
+                          </button>
+                        )}
+                      </div>
+                      {t.description && (
+                        <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "oklch(0.63 0.006 250)", lineHeight: 1.5 }}>
+                          {t.description}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid oklch(0.27 0.005 250)" }}>
                 <div style={{ fontSize: 13, fontWeight: 500, color: "oklch(0.7 0.01 250)", marginBottom: 12 }}>

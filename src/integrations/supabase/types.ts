@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       body_metrics: {
@@ -764,6 +739,7 @@ export type Database = {
           description: string | null
           equipment: string | null
           execution: string[]
+          gif_url: string | null
           id: string
           is_compound: boolean
           lower_back_notes: string | null
@@ -778,7 +754,6 @@ export type Database = {
           status: string
           updated_at: string
           variation_type: string | null
-          gif_url?: string | null
         }
         Insert: {
           aliases?: string[] | null
@@ -794,6 +769,7 @@ export type Database = {
           description?: string | null
           equipment?: string | null
           execution?: string[]
+          gif_url?: string | null
           id?: string
           is_compound?: boolean
           lower_back_notes?: string | null
@@ -808,7 +784,6 @@ export type Database = {
           status?: string
           updated_at?: string
           variation_type?: string | null
-          gif_url?: string | null
         }
         Update: {
           aliases?: string[] | null
@@ -824,6 +799,7 @@ export type Database = {
           description?: string | null
           equipment?: string | null
           execution?: string[]
+          gif_url?: string | null
           id?: string
           is_compound?: boolean
           lower_back_notes?: string | null
@@ -838,7 +814,6 @@ export type Database = {
           status?: string
           updated_at?: string
           variation_type?: string | null
-          gif_url?: string | null
         }
         Relationships: [
           {
@@ -1191,6 +1166,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          active_template_id: string | null
           activity_level: number | null
           avatar_color: string | null
           avatar_url: string | null
@@ -1219,6 +1195,7 @@ export type Database = {
           weight_unit: string
         }
         Insert: {
+          active_template_id?: string | null
           activity_level?: number | null
           avatar_color?: string | null
           avatar_url?: string | null
@@ -1247,6 +1224,7 @@ export type Database = {
           weight_unit?: string
         }
         Update: {
+          active_template_id?: string | null
           activity_level?: number | null
           avatar_color?: string | null
           avatar_url?: string | null
@@ -1274,7 +1252,15 @@ export type Database = {
           updated_at?: string
           weight_unit?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_active_template_id_fkey"
+            columns: ["active_template_id"]
+            isOneToOne: false
+            referencedRelation: "workout_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       program_exercise_sets: {
         Row: {
@@ -1654,7 +1640,7 @@ export type Database = {
           slug: string
           sort_order: number
           specialization: string | null
-          template_id: string
+          template_id: string | null
           user_id: string | null
         }
         Insert: {
@@ -1672,7 +1658,7 @@ export type Database = {
           slug: string
           sort_order?: number
           specialization?: string | null
-          template_id: string
+          template_id?: string | null
           user_id?: string | null
         }
         Update: {
@@ -1690,7 +1676,7 @@ export type Database = {
           slug?: string
           sort_order?: number
           specialization?: string | null
-          template_id?: string
+          template_id?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -1899,12 +1885,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1928,11 +1914,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1953,11 +1939,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1978,11 +1964,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1995,11 +1981,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2009,9 +1995,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
