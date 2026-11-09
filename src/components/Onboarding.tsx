@@ -73,6 +73,15 @@ const PLANS = [
     badge: "Recommended",
   },
   {
+    id: "hybrid-physique",
+    name: "Hybrid Physique 2.1",
+    subtitle: "12 weeks · 5 days, Saturday optional",
+    description: "Upper/lower split for hypertrophy and strength maintenance, plus incline walks, easy cycling and weekly bike HIIT for fat loss and conditioning.",
+    minDays: 5,
+    available: true,
+    badge: "New",
+  },
+  {
     id: "ppl",
     name: "Push / Pull / Legs",
     subtitle: "6 days, rest on Sunday",
@@ -107,6 +116,7 @@ type PlanId = (typeof PLANS)[number]["id"];
 const PLAN_TEMPLATE_SLUGS: Partial<Record<PlanId, string>> = {
   "v-taper": "v-taper-fat-loss",
   "toned-physique": "toned-physique-plan",
+  "hybrid-physique": "hybrid-physique-2-1",
 };
 
 function recommendedPlan(gymDays: number, sex: "male" | "female"): PlanId {
