@@ -896,8 +896,9 @@ function WorkoutPage() {
                 getKey={(c) => c.key}
                 onSwipe={handleSwipe}
                 disabled={finishing || flipped}
-                // Swiping while the rest timer is up ends the rest and moves the next card.
-                onDragStart={() => setRest(null)}
+                // Swiping the rest timer away ends the rest; the next card is then logged or skipped
+                // with its own swipe, never blind under the timer.
+                onSurfaceDismiss={() => setRest(null)}
                 renderCard={(card) => (
                   <SetCard
                     key={card.we.exercise_id}

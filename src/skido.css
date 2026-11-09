@@ -1294,6 +1294,10 @@ textarea.sk-field {
 .wk-stage {
   touch-action: pan-y;
 }
+.wk-rest.is-dragging {
+  animation: none;
+  cursor: grabbing;
+}
 .wk-card.is-dragging {
   animation: none;
   cursor: grabbing;
