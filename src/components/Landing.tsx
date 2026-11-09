@@ -1,10 +1,10 @@
 import { Link } from "@tanstack/react-router";
 
 const CARD = {
-  border: "1px solid oklch(0.27 0.005 250)",
+  border: "1px solid #252526",
   borderRadius: 12,
   padding: 16,
-  background: "oklch(0.11 0.004 250)",
+  background: "#131314",
 } as const;
 
 const EYEBROW = {
@@ -13,7 +13,7 @@ const EYEBROW = {
   fontWeight: 600,
   letterSpacing: "0.08em",
   textTransform: "uppercase" as const,
-  color: "oklch(0.45 0.006 250)",
+  color: "rgba(255,255,255,0.45)",
 };
 
 const SECTION = { maxWidth: 480, margin: "0 auto", padding: "56px 20px 0" };
@@ -26,8 +26,8 @@ function ComingSoonBadge() {
         display: "inline-block",
         verticalAlign: "middle",
         borderRadius: 999,
-        border: "1px solid oklch(0.92 0.25 110 / 45%)",
-        color: "oklch(0.92 0.25 110)",
+        border: "1px solid rgba(198,244,50,0.45)",
+        color: "#C6F432",
         fontSize: 11,
         fontWeight: 600,
         padding: "2px 8px",
@@ -52,7 +52,7 @@ function FeatureCard({
       {icon}
       <p style={{ margin: "12px 0 0", fontSize: 14.5, fontWeight: 600 }}>{title}</p>
       <p
-        style={{ margin: "4px 0 0", fontSize: 13, lineHeight: 1.5, color: "oklch(0.63 0.006 250)" }}
+        style={{ margin: "4px 0 0", fontSize: 13, lineHeight: 1.5, color: "rgba(255,255,255,0.63)" }}
       >
         {description}
       </p>
@@ -62,17 +62,17 @@ function FeatureCard({
 
 export function Landing() {
   return (
-    <div style={{ minHeight: "100vh", background: "oklch(0.045 0.003 250)" }}>
+    <div style={{ minHeight: "100vh", background: "#0B0B0C" }}>
       {/* Sticky mini header */}
       <div
         style={{
           position: "sticky",
           top: 0,
           zIndex: 10,
-          background: "oklch(0.045 0.003 250 / 92%)",
+          background: "rgba(11,11,12,0.92)",
           backdropFilter: "blur(10px)",
           WebkitBackdropFilter: "blur(10px)",
-          borderBottom: "1px solid oklch(0.27 0.005 250 / 60%)",
+          borderBottom: "1px solid rgba(37,37,38,0.6)",
         }}
       >
         <div
@@ -92,7 +92,7 @@ export function Landing() {
                 width: 26,
                 height: 26,
                 borderRadius: 6,
-                background: "oklch(0.92 0.25 110)",
+                background: "#C6F432",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -104,7 +104,7 @@ export function Landing() {
                 height="13"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="oklch(0.07 0.01 110)"
+                stroke="#0E0E0F"
                 strokeWidth="2.2"
                 strokeLinecap="round"
               >
@@ -132,7 +132,7 @@ export function Landing() {
               height: 32,
               padding: "0 14px",
               borderRadius: 8,
-              border: "1px solid oklch(0.27 0.005 250)",
+              border: "1px solid #252526",
               background: "transparent",
               color: "inherit",
               fontSize: 13,
@@ -152,7 +152,7 @@ export function Landing() {
           margin: "0 auto",
           padding: "40px 20px 0",
           background:
-            "radial-gradient(circle at 50% 0%, oklch(0.92 0.25 110 / 8%), transparent 60%)",
+            "radial-gradient(circle at 50% 0%, rgba(198,244,50,0.08), transparent 60%)",
         }}
       >
         <span
@@ -161,7 +161,7 @@ export function Landing() {
             fontWeight: 600,
             letterSpacing: "0.08em",
             textTransform: "uppercase",
-            color: "oklch(0.92 0.25 110)",
+            color: "#C6F432",
           }}
         >
           Training, quantified
@@ -183,7 +183,7 @@ export function Landing() {
             margin: "16px 0 0",
             fontSize: 15,
             lineHeight: 1.55,
-            color: "oklch(0.63 0.006 250)",
+            color: "rgba(255,255,255,0.63)",
           }}
         >
           One app for lifters who train alone, coaches who manage clients, and friends who push each
@@ -200,8 +200,8 @@ export function Landing() {
               height: 48,
               borderRadius: 10,
               border: "none",
-              background: "oklch(0.92 0.25 110)",
-              color: "oklch(0.07 0.01 110)",
+              background: "#C6F432",
+              color: "#0E0E0F",
               fontSize: 15,
               fontWeight: 600,
               textDecoration: "none",
@@ -217,7 +217,7 @@ export function Landing() {
               justifyContent: "center",
               height: 48,
               borderRadius: 10,
-              border: "1px solid oklch(0.27 0.005 250)",
+              border: "1px solid #252526",
               background: "transparent",
               color: "inherit",
               fontSize: 15,
@@ -244,7 +244,7 @@ export function Landing() {
                 height="20"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="oklch(0.92 0.25 110)"
+                stroke="#C6F432"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -262,7 +262,7 @@ export function Landing() {
                 height="20"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="oklch(0.92 0.25 110)"
+                stroke="#C6F432"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -282,7 +282,7 @@ export function Landing() {
                 height="20"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="oklch(0.92 0.25 110)"
+                stroke="#C6F432"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -308,7 +308,7 @@ export function Landing() {
             margin: "12px 0 0",
             fontSize: 14,
             lineHeight: 1.6,
-            color: "oklch(0.63 0.006 250)",
+            color: "rgba(255,255,255,0.63)",
           }}
         >
           Coming soon: next-session progression suggestions and plan adjustments based on your own
@@ -327,7 +327,7 @@ export function Landing() {
             margin: "12px 0 0",
             fontSize: 14,
             lineHeight: 1.6,
-            color: "oklch(0.63 0.006 250)",
+            color: "rgba(255,255,255,0.63)",
           }}
         >
           A training-score leaderboard ranks consistency and progression, not just raw volume.
@@ -336,7 +336,7 @@ export function Landing() {
         <div
           style={{
             marginTop: 16,
-            border: "1px solid oklch(0.27 0.005 250)",
+            border: "1px solid #252526",
             borderRadius: 12,
             overflow: "hidden",
           }}
@@ -347,11 +347,11 @@ export function Landing() {
               display: "flex",
               alignItems: "center",
               gap: 10,
-              borderBottom: "1px solid oklch(0.27 0.005 250)",
+              borderBottom: "1px solid #252526",
             }}
           >
             <span
-              style={{ width: 20, fontSize: 12, fontWeight: 600, color: "oklch(0.92 0.25 110)" }}
+              style={{ width: 20, fontSize: 12, fontWeight: 600, color: "#C6F432" }}
             >
               1
             </span>
@@ -365,11 +365,11 @@ export function Landing() {
               }}
             />
             <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>Jordan M.</span>
-            <span style={{ fontSize: 12, color: "oklch(0.63 0.006 250)" }}>2,140 pts</span>
+            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.63)" }}>2,140 pts</span>
           </div>
           <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}>
             <span
-              style={{ width: 20, fontSize: 12, fontWeight: 600, color: "oklch(0.63 0.006 250)" }}
+              style={{ width: 20, fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.63)" }}
             >
               2
             </span>
@@ -383,7 +383,7 @@ export function Landing() {
               }}
             />
             <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>You</span>
-            <span style={{ fontSize: 12, color: "oklch(0.63 0.006 250)" }}>1,960 pts</span>
+            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.63)" }}>1,960 pts</span>
           </div>
         </div>
       </div>
@@ -400,7 +400,7 @@ export function Landing() {
             margin: "12px 0 0",
             fontSize: 14,
             lineHeight: 1.6,
-            color: "oklch(0.63 0.006 250)",
+            color: "rgba(255,255,255,0.63)",
           }}
         >
           Coming soon: trainers will see each client's plan adherence, PRs, and body-metric trends
@@ -412,11 +412,11 @@ export function Landing() {
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "56px 20px 64px" }}>
         <div
           style={{
-            border: "1px solid oklch(0.92 0.25 110 / 40%)",
+            border: "1px solid rgba(198,244,50,0.4)",
             borderRadius: 16,
             padding: "28px 20px",
             textAlign: "center",
-            background: "oklch(0.92 0.25 110 / 6%)",
+            background: "rgba(198,244,50,0.06)",
           }}
         >
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>
@@ -434,8 +434,8 @@ export function Landing() {
               height: 48,
               borderRadius: 10,
               border: "none",
-              background: "oklch(0.92 0.25 110)",
-              color: "oklch(0.07 0.01 110)",
+              background: "#C6F432",
+              color: "#0E0E0F",
               fontSize: 15,
               fontWeight: 600,
               textDecoration: "none",
@@ -450,7 +450,7 @@ export function Landing() {
             margin: "24px 0 0",
             textAlign: "center",
             fontSize: 12.5,
-            color: "oklch(0.45 0.006 250)",
+            color: "rgba(255,255,255,0.45)",
           }}
         >
           © {new Date().getFullYear()} Skido

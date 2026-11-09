@@ -153,7 +153,7 @@ export function cardDefaults(
 ): LoggedValues {
   const { we } = card;
   if (card.isCardio) {
-    return { weight: null, reps: parseTargetMinutes(we.rep_range, we.notes) ?? 20 };
+    return { weight: null, reps: parseTargetMinutes(we.rep_range, we.notes) ?? 15 };
   }
 
   for (let s = card.setNumber - 1; s >= 1; s--) {
@@ -175,8 +175,8 @@ export function cardDefaults(
 
   const weight = isBodyweight(we)
     ? (suggestion?.weight ?? 0)
-    : (suggestion?.weight ?? parseReferenceLoad(we.notes) ?? 0);
-  const reps = suggestion?.reps ?? we.rep_min ?? we.rep_max ?? 10;
+    : (suggestion?.weight ?? parseReferenceLoad(we.notes) ?? 20);
+  const reps = suggestion?.reps ?? we.rep_min ?? we.rep_max ?? 12;
   return { weight: Math.min(weight, MAX_WEIGHT_KG), reps };
 }
 

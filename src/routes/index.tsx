@@ -1,22 +1,35 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Landing } from "@/components/Landing";
-import { StatusChip } from "@/components/StatusChip";
-import { useAuth } from "@/lib/auth";
+import { StatDeck, type StatCard } from "@/components/sk/StatDeck";
+import { SessionRow, type SessionRowData } from "@/components/sk/SessionRow";
 import {
-  dayQueryKey,
-  fetchBodyMetrics,
-  fetchDayWithExercises,
-  fetchDays,
-  fetchHistory,
-  fetchPRs,
-  fetchProfile,
-} from "@/lib/api";
+  ACCENT,
+  Avatar,
+  Icon,
+  PageSpinner,
+  ProgressBar,
+  Spark,
+  TabHeader,
+} from "@/components/sk/ui";
+import { useAuth } from "@/lib/auth";
+import { dayQueryKey, fetchDayWithExercises, fetchRecentSetsForExercises } from "@/lib/api";
+import {
+  displayName,
+  useHistory,
+  useLeaderboard,
+  useMetrics,
+  usePlanDays,
+  usePRs,
+  useProfile,
+  type PlanDay,
+} from "@/lib/hooks";
 import { buildWeekStatus } from "@/lib/weekStatus";
-import { DashboardSkeleton } from "@/components/Skeleton";
-import { Heatmap, type WorkoutActivity } from "@/components/Heatmap";
+import { fmtDate, fmtW, greeting, splitTitle } from "@/lib/skido";
+import { fmtDuration, todayISO } from "@/lib/format";
+import { getSaturdayChoice } from "@/lib/saturday";
 
 const STRUCTURED_DATA = {
   "@context": "https://schema.org",
@@ -26,36 +39,23 @@ const STRUCTURED_DATA = {
   operatingSystem: "Web",
   description:
     "Skido is a workout tracker and training plan app for logging sets and reps, following a structured weekly workout plan, tracking personal records, and monitoring bodyweight and strength progress over time.",
-  offers: {
-    "@type": "Offer",
-    price: "0",
-    priceCurrency: "USD",
-  },
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
 };
+
+const DESCRIPTION =
+  "Skido is a free workout tracker and training plan app: log sets and reps, follow a structured weekly workout plan, track PRs, and see your bodyweight and strength progress over time.";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Skido — Workout Tracker & Training Plan App" },
-      {
-        name: "description",
-        content:
-          "Skido is a free workout tracker and training plan app: log sets and reps, follow a structured weekly workout plan, track PRs, and see your bodyweight and strength progress over time.",
-      },
+      { name: "description", content: DESCRIPTION },
       { property: "og:title", content: "Skido — Workout Tracker & Training Plan App" },
-      {
-        property: "og:description",
-        content:
-          "Skido is a free workout tracker and training plan app: log sets and reps, follow a structured weekly workout plan, track PRs, and see your bodyweight and strength progress over time.",
-      },
+      { property: "og:description", content: DESCRIPTION },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "Skido — Workout Tracker & Training Plan App" },
-      {
-        name: "twitter:description",
-        content:
-          "Skido is a free workout tracker and training plan app: log sets and reps, follow a structured weekly workout plan, track PRs, and see your bodyweight and strength progress over time.",
-      },
+      { name: "twitter:description", content: DESCRIPTION },
       { "script:ld+json": STRUCTURED_DATA },
     ],
   }),
@@ -64,555 +64,562 @@ export const Route = createFileRoute("/")({
 
 function IndexRoute() {
   const { session, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          minHeight: "100dvh",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "oklch(0.045 0.003 250)",
-        }}
-      >
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 999,
-            border: "2px solid oklch(0.92 0.25 110)",
-            borderTopColor: "transparent",
-            animation: "spin 0.8s linear infinite",
-          }}
-        />
-      </div>
-    );
-  }
-
+  if (loading) return <PageSpinner />;
   if (!session) return <Landing />;
-
   return (
-    <AppShell>
-      <Dashboard />
+    <AppShell tab="home">
+      <Home />
     </AppShell>
   );
 }
 
-function Dashboard() {
-  const { user } = useAuth();
-  const { data: profile } = useQuery({
-    queryKey: ["profile", user?.id],
-    queryFn: () => fetchProfile(user!.id),
-    enabled: !!user,
-  });
-  const { data: days } = useQuery({
-    queryKey: ["days", user?.id, profile?.active_template_id],
-    queryFn: () => fetchDays(user?.id, profile?.active_template_id),
-    // Wait for the profile: without its active plan this fetches every plan's days,
-    // briefly showing another plan's workout as "today" before refetching.
-    enabled: !user || profile !== undefined,
-  });
-  const { data: history } = useQuery({
-    queryKey: ["history", user?.id],
-    queryFn: () => fetchHistory(user!.id),
-    enabled: !!user,
-  });
-  const { data: prs } = useQuery({
-    queryKey: ["prs", user?.id],
-    queryFn: () => fetchPRs(user!.id),
-    enabled: !!user,
-  });
-  const { data: metrics } = useQuery({
-    queryKey: ["metrics", user?.id],
-    queryFn: () => fetchBodyMetrics(user!.id),
-    enabled: !!user,
-  });
-
+/** Today's plan day: the mandatory day for this weekday, or on Saturday the chosen optional session. */
+function pickToday(days: PlanDay[], uid: string | undefined) {
   const dow = new Date().getDay();
-  const today = (days ?? []).find((d) => d.day_of_week === dow && !d.is_optional);
+  const mandatory = days.find((d) => d.day_of_week === dow && !d.is_optional);
+  if (mandatory) return mandatory;
+  const optional = days.filter((d) => d.day_of_week === dow && d.is_optional);
+  if (optional.length === 0) return null;
+  const chosen = getSaturdayChoice(uid);
+  return optional.find((d) => d.slug === chosen) ?? optional[0]!;
+}
 
-  // Load today's workout in the background so tapping Start opens it instantly.
+function Home() {
+  const { user } = useAuth();
+  const uid = user?.id;
   const qc = useQueryClient();
+  const { data: profile } = useProfile();
+  const { days, isLoading: daysLoading } = usePlanDays();
+  const { data: history, isLoading: historyLoading } = useHistory();
+  const { data: metrics } = useMetrics();
+  const { data: prs } = usePRs();
+  const board = useLeaderboard();
+
+  const name = displayName(profile, user?.email);
+  const today = useMemo(() => pickToday(days, uid), [days, uid]);
+
+  // Load today's workout in the background so Start opens it instantly.
+  const dayQ = useQuery({
+    queryKey: dayQueryKey(today?.slug ?? "", uid),
+    queryFn: () => fetchDayWithExercises(today!.slug, uid),
+    enabled: !!today && !today.is_rest,
+  });
+  const exIds = useMemo(
+    () => [...new Set((dayQ.data?.exercises ?? []).map((e) => e.exercise_id))].sort(),
+    [dayQ.data],
+  );
+  const recentQ = useQuery({
+    queryKey: ["recent-sets", uid, exIds.join(",")],
+    queryFn: () => fetchRecentSetsForExercises(uid!, exIds),
+    enabled: !!uid && exIds.length > 0,
+    staleTime: 60_000,
+  });
   useEffect(() => {
-    if (!user?.id || !today || today.is_rest) return;
+    if (!uid || !today || today.is_rest) return;
     qc.prefetchQuery({
-      queryKey: dayQueryKey(today.slug, user.id),
-      queryFn: () => fetchDayWithExercises(today.slug, user.id),
+      queryKey: dayQueryKey(today.slug, uid),
+      queryFn: () => fetchDayWithExercises(today.slug, uid),
     });
-  }, [qc, user?.id, today]);
-  const optional = (days ?? []).filter((d) => d.is_optional);
-  const weekDays = (days ?? []).filter((d) => !d.is_optional);
-  const weightEntries = (metrics ?? []).filter((m) => m.weight_kg != null);
-  const latestWeightEntry = weightEntries[weightEntries.length - 1];
-  const previousWeightEntry = weightEntries[weightEntries.length - 2];
-  const latestWeight = latestWeightEntry?.weight_kg;
-  const completed = (history ?? []).filter((s) => s.status === "completed").length;
-  const prCount = prs?.length ?? 0;
+  }, [qc, uid, today]);
 
-  const firstName = (profile?.name?.trim() || user?.email?.split("@")[0] || "there").split(" ")[0];
-  const greetingHour = new Date().getHours();
-  const greetingWord =
-    greetingHour < 12 ? "Good morning" : greetingHour < 18 ? "Good afternoon" : "Good evening";
-  const welcomeLine = `${greetingWord}, ${firstName}`;
-
-  const d0 = new Date();
-  const todayISOStr = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, "0")}-${String(d0.getDate()).padStart(2, "0")}`;
-  const isTodayCompleted =
-    today &&
-    (history ?? []).some(
-      (s) => s.day_id === today.id && s.session_date === todayISOStr && s.status === "completed",
-    );
-  const isTodayInProgress =
-    today &&
-    (history ?? []).some(
-      (s) => s.day_id === today.id && s.session_date === todayISOStr && s.status === "in_progress",
-    );
-
-  const todayLabel = new Date().toLocaleDateString(undefined, {
+  const now = new Date();
+  const eyebrow = now.toLocaleDateString("en-GB", {
     weekday: "long",
     day: "numeric",
     month: "long",
   });
 
-  const heading = today?.is_rest
-    ? "Recovery day"
-    : (today?.focus ?? new Date().toLocaleDateString(undefined, { weekday: "long" }));
-
-  // --- Week status (Mon-start week) ---
-  const now = new Date();
-  const { statusFor, weekStartISO, weekEndISO } = buildWeekStatus(
-    history ?? [],
-    profile?.created_at?.slice(0, 10) ?? "",
-  );
-
-  // --- Stat tile context lines ---
-  const sessionsThisWeek = (history ?? []).filter(
-    (s) =>
-      s.status === "completed" && s.session_date >= weekStartISO && s.session_date <= weekEndISO,
-  ).length;
-  const sessionsContext = `${sessionsThisWeek} this week`;
-
-  const weightDeltaLine = !latestWeightEntry
-    ? "No entries yet"
-    : !previousWeightEntry
-      ? "First entry logged"
-      : (() => {
-          const delta = (latestWeightEntry.weight_kg ?? 0) - (previousWeightEntry.weight_kg ?? 0);
-          if (Math.abs(delta) < 0.05) return "No change";
-          return `${delta > 0 ? "+" : ""}${delta.toFixed(1)} kg`;
-        })();
-
-  const monthStartISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const prsThisMonth = (prs ?? []).filter(
-    (p) => p.achieved_on && p.achieved_on >= monthStartISO,
-  ).length;
-  const prsContext = `${prsThisMonth} this month`;
-
-  // Most recent completed session for today's day, excluding today
-  const lastSession = today
-    ? (history ?? []).find(
-        (s) => s.day_id === today.id && s.status === "completed" && s.session_date !== todayISOStr,
-      )
-    : undefined;
-  const lastSessionLine = lastSession
-    ? new Date(lastSession.session_date).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-      })
-    : null;
-
-  // Exercise count / duration estimate for hero
-  const exerciseCount = (today as { exercise_count?: number })?.exercise_count ?? "—";
-  const estDuration = today?.estimated_minutes_min
-    ? `${today.estimated_minutes_min}–${today.estimated_minutes_max ?? ""} min`
-    : "~60 min";
-
-  const heatmapActivities: WorkoutActivity[] = (history ?? [])
-    .filter((s) => s.status === "completed")
-    .map((s) => {
-      const date = (s.session_date || s.started_at || "").slice(0, 10);
-      const start = s.started_at ? new Date(s.started_at).getTime() : 0;
-      const end = s.ended_at ? new Date(s.ended_at).getTime() : start + 45 * 60000;
-      const minutes = Math.max(15, Math.round((end - start) / 60000));
-      return {
-        date,
-        minutes,
-        volumeKg: s.total_volume_kg || 0,
-        workoutName: s.title || (s.workout_days as any)?.name || "Workout",
-      };
-    });
-
-  // Show skeleton while critical data is loading
-  if (!days || !history)
+  if (daysLoading || historyLoading) {
     return (
-      <div className="page-enter">
-        <DashboardSkeleton />
-      </div>
+      <>
+        <TabHeader eyebrow={eyebrow} title={greeting(name)} />
+        <div className="sk-skel" style={{ height: 200, borderRadius: 24, marginBottom: 56 }} />
+        <div className="sk-skel" style={{ height: 300, borderRadius: 24 }} />
+      </>
     );
+  }
+
+  const completed = (history ?? []).filter((s) => s.status === "completed");
+  const week = buildWeekStatus(history ?? [], profile?.created_at?.slice(0, 10) ?? "");
+  const mandatory = days.filter((d) => !d.is_optional && !d.is_rest);
+  const weekDone = mandatory.filter((d) => week.statusFor(d).isDone).length;
+  const hasOptional = days.some((d) => d.is_optional);
+
+  // ── stat cards ──
+  const weights = (metrics ?? []).filter((m) => m.weight_kg != null);
+  const firstW = weights[0];
+  const lastW = weights[weights.length - 1];
+  const lastWaist = [...(metrics ?? [])].reverse().find((m) => m.waist_cm != null);
+  const last = completed[0];
+  const lastTitle = splitTitle(last?.title);
+  const totalPRs = completed.reduce((a, s) => a + s.pr_count, 0);
+  const leader = board.ranked[0];
+
+  const cards: StatCard[] = [
+    {
+      key: "weight",
+      label: "Body weight",
+      value: lastW ? fmtW(Number(lastW.weight_kg)) : "—",
+      unit: lastW ? "kg" : "",
+      sub: lastW
+        ? `${Number(lastW.weight_kg) - Number(firstW!.weight_kg) > 0 ? "+" : ""}${fmtW(Math.round((Number(lastW.weight_kg) - Number(firstW!.weight_kg)) * 10) / 10)} kg since you started${lastWaist ? ` · waist ${fmtW(Number(lastWaist.waist_cm))} cm` : ""}`
+        : "Log your first weigh-in on Progress",
+      accent: ACCENT,
+      glow: "rgba(198,244,50,0.16)",
+      body:
+        weights.length >= 2 ? (
+          <Spark
+            values={weights.map((m) => Number(m.weight_kg))}
+            label={`Weight trend from ${fmtW(Number(firstW!.weight_kg))} kg to ${fmtW(Number(lastW!.weight_kg))} kg over ${weights.length} entries`}
+          />
+        ) : null,
+    },
+    {
+      key: "score",
+      label: "Iron score",
+      value: String(board.myScore),
+      unit: "pts",
+      sub: board.level.next
+        ? `${board.level.next.min - board.myScore} points to ${board.level.next.name}`
+        : "Top level reached",
+      accent: "rgba(255,255,255,0.72)",
+      glow: "rgba(198,244,50,0.10)",
+      body: (
+        <>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 12,
+              marginBottom: 10,
+              color: "rgba(255,255,255,0.62)",
+            }}
+          >
+            <span>{board.level.current.name}</span>
+            <span>{board.level.next?.name ?? "Max"}</span>
+          </div>
+          <ProgressBar pct={board.level.pct} />
+        </>
+      ),
+    },
+    {
+      key: "week",
+      label: "This week",
+      value: String(weekDone),
+      unit: `of ${mandatory.length} sessions`,
+      sub: hasOptional ? "Saturday is optional" : "Keep the streak going",
+      accent: "rgba(255,255,255,0.78)",
+      glow: "rgba(198,244,50,0.10)",
+      body: <WeekDots days={days} statusFor={week.statusFor} />,
+    },
+    {
+      key: "last",
+      label: "Last workout",
+      value: last ? fmtDuration(last.duration_seconds) : "—",
+      unit: "",
+      sub: last ? [lastTitle.day, lastTitle.focus].filter(Boolean).join(" · ") : "No sessions yet",
+      accent: "rgba(255,255,255,0.75)",
+      glow: "rgba(198,244,50,0.10)",
+      body: last ? (
+        <Pills
+          items={[
+            `${last.working_sets} sets`,
+            last.pr_count ? `${last.pr_count} PR${last.pr_count > 1 ? "s" : ""}` : "No PRs",
+            fmtDate(last.session_date),
+          ]}
+        />
+      ) : null,
+    },
+    {
+      key: "prs",
+      label: "Personal records",
+      value: String(totalPRs),
+      unit: "all time",
+      sub: "Strength and volume bests",
+      accent: ACCENT,
+      glow: "rgba(198,244,50,0.14)",
+      body: (
+        <Pills
+          items={[
+            ...new Set(
+              (prs ?? [])
+                .map((p) => (p.exercises as { name: string } | null)?.name)
+                .filter(Boolean) as string[],
+            ),
+          ]
+            .slice(0, 3)
+            .map((n) => n.replace(/ Machine| Smith/g, ""))}
+        />
+      ),
+    },
+    {
+      key: "rank",
+      label: "Leaderboard",
+      value: board.myRank > 0 ? `#${board.myRank}` : "—",
+      unit: board.ranked.length ? `of ${board.ranked.length}` : "",
+      sub:
+        board.myRank === 1
+          ? "You're leading your group"
+          : board.me && leader
+            ? `${leader.score - board.myScore} points behind ${(leader.display_name ?? "the leader").split(" ")[0]}`
+            : "Train this month to get ranked",
+      accent: "rgba(255,255,255,0.75)",
+      glow: "rgba(198,244,50,0.10)",
+      body: board.me ? (
+        <Pills items={[`${board.me.sessions} sessions`, `${board.me.active_weeks} active weeks`]} />
+      ) : null,
+    },
+  ];
 
   return (
-    <div className="page-enter" style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-      {/* Heading */}
-      <div>
-        <p style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{welcomeLine}</p>
-        <p style={{ margin: "4px 0 0", fontSize: 13, color: "oklch(0.63 0.006 250)" }}>
-          {todayLabel}
-        </p>
-        <h1
-          style={{
-            margin: "14px 0 0",
-            fontFamily: "'Inter'",
-            fontSize: 32,
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-            lineHeight: 1.15,
-          }}
-        >
-          {heading}
-        </h1>
-      </div>
+    <>
+      <TabHeader
+        eyebrow={eyebrow}
+        title={greeting(name)}
+        right={
+          <Link
+            to="/profile"
+            aria-label="Your profile"
+            className="sk-icon-btn"
+            style={{ width: 40, height: 40, padding: 0, overflow: "hidden", flexShrink: 0 }}
+          >
+            <Avatar
+              name={name}
+              image={profile?.avatar_url}
+              color={profile?.avatar_color}
+              size={40}
+              style={{ border: "none" }}
+            />
+          </Link>
+        }
+      />
+      <StatDeck cards={cards} />
+      <TodayCard
+        today={today}
+        day={dayQ.data ?? null}
+        withHistory={new Set((recentQ.data ?? []).map((r) => r.exercise_id))}
+        history={history ?? []}
+      />
+      <Recent sessions={completed.slice(0, 3)} />
+    </>
+  );
+}
 
-      {/* Hero card */}
-      {today && !today.is_rest ? (
-        <div
-          className="hero-row"
-          style={{
-            background: "oklch(0.11 0.004 250)",
-            border: "1px solid oklch(0.27 0.005 250)",
-            borderRadius: 12,
-            padding: 24,
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ margin: 0, fontSize: 14, color: "oklch(0.63 0.006 250)" }}>{today.name}</p>
-            <h2 style={{ margin: "6px 0 0", fontSize: 22, fontWeight: 600 }}>{today.focus}</h2>
-            {today.cardio_note && (
-              <p style={{ margin: "8px 0 0", fontSize: 14, color: "oklch(0.63 0.006 250)" }}>
-                Cardio: {today.cardio_note}
-              </p>
-            )}
-            {isTodayCompleted ? (
-              <div
-                style={{
-                  marginTop: 20,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  height: 46,
-                  padding: "0 20px",
-                  borderRadius: 9,
-                  background: "oklch(0.92 0.25 110 / 10%)",
-                  color: "oklch(0.92 0.25 110)",
-                  fontSize: 14,
-                  fontWeight: 600,
-                }}
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                Well done, workout completed for today
-              </div>
-            ) : (
-              <Link
-                to="/workout/$slug"
-                params={{ slug: today.slug }}
-                search={{ start: true }}
-                style={{ textDecoration: "none" }}
-              >
-                <button
-                  style={{
-                    marginTop: 20,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    height: 46,
-                    padding: "0 20px",
-                    borderRadius: 9,
-                    border: "none",
-                    background: "oklch(0.92 0.25 110)",
-                    color: "oklch(0.07 0.01 110)",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {isTodayInProgress ? "Resume workout" : "Start workout"}
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    style={{ transition: "transform 0.15s" }}
-                  >
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                    <polyline points="12,5 19,12 12,19" />
-                  </svg>
-                </button>
-              </Link>
-            )}
-          </div>
-          <div className="hero-right">
-            <div style={{ display: "flex", gap: 40 }}>
-              <div>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: 22,
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {exerciseCount}
-                </p>
-                <p style={{ margin: "4px 0 0", fontSize: 13, color: "oklch(0.63 0.006 250)" }}>
-                  exercises
-                </p>
-              </div>
-              <div>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: 22,
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {estDuration}
-                </p>
-                <p style={{ margin: "4px 0 0", fontSize: 13, color: "oklch(0.63 0.006 250)" }}>
-                  estimated
-                </p>
-              </div>
-              {lastSessionLine && (
-                <div>
-                  <p style={{ margin: 0, fontSize: 22, fontWeight: 600, whiteSpace: "nowrap" }}>
-                    {lastSessionLine}
-                  </p>
-                  <p style={{ margin: "4px 0 0", fontSize: 13, color: "oklch(0.63 0.006 250)" }}>
-                    last session
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div
-          style={{
-            background: "oklch(0.11 0.004 250)",
-            border: "1px solid oklch(0.27 0.005 250)",
-            borderRadius: 12,
-            padding: 24,
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Recovery day</h2>
-          <p style={{ margin: "6px 0 0", fontSize: 14, color: "oklch(0.63 0.006 250)" }}>
-            Easy walking, light mobility, stretching. No hard training, no HIIT.
-          </p>
-          {optional.length > 0 && (
-            <div style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {optional.map((d) => (
-                <Link
-                  key={d.id}
-                  to="/workout/$slug"
-                  params={{ slug: d.slug }}
-                  style={{ textDecoration: "none" }}
-                >
-                  <button
-                    style={{
-                      height: 36,
-                      padding: "0 14px",
-                      borderRadius: 8,
-                      border: "1px solid oklch(0.27 0.005 250)",
-                      background: "transparent",
-                      color: "inherit",
-                      fontSize: 13,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {d.focus?.replace("Optional Specialization: ", "")}
-                  </button>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Stats grid */}
-      <div className="stats-grid">
-        <StatCard label="Sessions" value={String(completed)} sub={sessionsContext} />
-        <StatCard
-          label="Bodyweight"
-          value={latestWeight ? `${latestWeight} kg` : "—"}
-          sub={weightDeltaLine}
-        />
-        <StatCard label="PRs" value={String(prCount)} sub={prsContext} />
-      </div>
-
-      {/* Training Consistency Heatmap */}
-      <Heatmap activities={heatmapActivities} />
-
-      {/* This week */}
-      <div>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>This week</h2>
-        <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-          {weekDays.map((d) => {
-            const { isToday, isDone, isMissed, isUpcoming, session } = statusFor(d);
-            const accent = isDone
-              ? "oklch(0.78 0.19 145)"
-              : isMissed
-                ? "oklch(0.62 0.2 25)"
-                : isToday
-                  ? "oklch(0.92 0.25 110)"
-                  : "transparent";
-            return (
-              <div
-                key={d.id}
-                style={{
-                  background: isDone
-                    ? "oklch(0.78 0.19 145 / 8%)"
-                    : isMissed
-                      ? "oklch(0.62 0.2 25 / 7%)"
-                      : "oklch(0.11 0.004 250)",
-                  border: "1px solid oklch(0.27 0.005 250)",
-                  borderLeft: `3px solid ${accent}`,
-                  borderRadius: 12,
-                  padding: "16px 20px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  fontSize: 14,
-                }}
-              >
-                <span>
-                  <span style={{ fontWeight: 600 }}>{d.name}</span>
-                  <span style={{ color: "oklch(0.63 0.006 250)" }}>
-                    {" "}
-                    — {d.is_rest ? "Rest" : d.focus}
-                  </span>
-                  {d.is_rest && (
-                    <span
-                      style={{
-                        marginLeft: 8,
-                        fontSize: 11,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                        color: "oklch(0.45 0.006 250)",
-                      }}
-                    >
-                      Recovery
-                    </span>
-                  )}
-                  {isDone && <StatusChip label="Completed" color="oklch(0.78 0.19 145)" />}
-                  {isMissed && <StatusChip label="Missed" color="oklch(0.68 0.2 25)" />}
-                  {isToday && !isDone && <StatusChip label="Today" color="oklch(0.92 0.25 110)" />}
-                  {isUpcoming && <StatusChip label="Upcoming" color="oklch(0.63 0.006 250)" />}
-                </span>
-                {!d.is_rest && (
-                  <span
-                    style={{ display: "flex", alignItems: "center", gap: 14, whiteSpace: "nowrap" }}
-                  >
-                    {isDone && session ? (
-                      <>
-                        <Link
-                          to="/workout/$slug"
-                          params={{ slug: d.slug }}
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 500,
-                            color: "inherit",
-                            textDecoration: "none",
-                          }}
-                        >
-                          Open
-                        </Link>
-                        <Link
-                          to="/history/$id"
-                          params={{ id: session.id }}
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 500,
-                            color: "oklch(0.78 0.19 145)",
-                            textDecoration: "none",
-                          }}
-                        >
-                          View log →
-                        </Link>
-                      </>
-                    ) : (
-                      <Link
-                        to="/workout/$slug"
-                        params={{ slug: d.slug }}
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 500,
-                          color: isMissed ? "oklch(0.68 0.2 25)" : "oklch(0.92 0.25 110)",
-                          textDecoration: "none",
-                        }}
-                      >
-                        {isMissed ? "Complete now →" : "Open →"}
-                      </Link>
-                    )}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+function Pills({ items }: { items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {items.map((c) => (
+        <span key={c} className="sk-pill">
+          {c}
+        </span>
+      ))}
     </div>
   );
 }
 
-function StatCard({ label, value, sub }: { label: string; value: string; sub: string }) {
+function WeekDots({
+  days,
+  statusFor,
+}: {
+  days: PlanDay[];
+  statusFor: ReturnType<typeof buildWeekStatus>["statusFor"];
+}) {
+  const dow = new Date().getDay();
+  const order = [1, 2, 3, 4, 5, 6, 0];
   return (
-    <div
-      style={{
-        background: "oklch(0.11 0.004 250)",
-        border: "1px solid oklch(0.27 0.005 250)",
-        borderRadius: 12,
-        padding: "12px 10px",
-      }}
-    >
-      <p
-        style={{
-          margin: 0,
-          fontSize: 10,
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          color: "oklch(0.63 0.006 250)",
-        }}
-      >
-        {label}
-      </p>
-      <p
-        style={{
-          margin: "5px 0 0",
-          fontSize: 18,
-          fontWeight: 700,
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {value}
-      </p>
-      <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "oklch(0.45 0.006 250)" }}>{sub}</p>
+    <div style={{ display: "flex", justifyContent: "space-between" }}>
+      {order.map((d, i) => {
+        const day =
+          days.find((x) => x.day_of_week === d && !x.is_optional) ??
+          days.find((x) => x.day_of_week === d);
+        const done = day ? statusFor(day).isDone : false;
+        const isToday = d === dow;
+        return (
+          <div
+            key={d}
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
+          >
+            <span
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 999,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: done ? "rgba(255,255,255,0.78)" : "transparent",
+                border: isToday
+                  ? "1.5px solid rgba(255,255,255,0.78)"
+                  : done
+                    ? "1.5px solid transparent"
+                    : "1.5px solid rgba(255,255,255,0.1)",
+              }}
+            >
+              {done && <Icon name="check" size={12} stroke={3} color="#1F1F20" />}
+            </span>
+            <span style={{ fontSize: 11, color: isToday ? "#FFFFFF" : "rgba(255,255,255,0.56)" }}>
+              {"MTWTFSS"[i]}
+            </span>
+          </div>
+        );
+      })}
     </div>
+  );
+}
+
+function TodayCard({
+  today,
+  day,
+  withHistory,
+  history,
+}: {
+  today: PlanDay | null;
+  day: Awaited<ReturnType<typeof fetchDayWithExercises>>;
+  withHistory: Set<string>;
+  history: { day_id: string | null; session_date: string; status: string; id: string }[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const weekday = new Date().toLocaleDateString("en-GB", { weekday: "long" });
+  const card = {
+    position: "relative" as const,
+    borderRadius: 24,
+    padding: 22,
+    marginBottom: 28,
+    overflow: "hidden" as const,
+    background:
+      "radial-gradient(420px 220px at 100% 0%, rgba(198,244,50,0.14), rgba(198,244,50,0) 70%), linear-gradient(180deg, #171718, #121213)",
+    borderColor: "rgba(198,244,50,0.18)",
+    animationDelay: ".1s",
+  };
+  const topLine = (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        left: 22,
+        right: 22,
+        top: 0,
+        height: 1,
+        background: "linear-gradient(90deg, transparent, rgba(198,244,50,0.45), transparent)",
+      }}
+    />
+  );
+
+  if (!today || today.is_rest) {
+    return (
+      <section aria-label="Today's workout" className="sk-fade sk-surface" style={card}>
+        {topLine}
+        <p className="sk-eyebrow" style={{ margin: 0 }}>
+          Today · {weekday}
+        </p>
+        <h2
+          style={{ margin: "10px 0 0", fontSize: 22, fontWeight: 600, letterSpacing: "-0.025em" }}
+        >
+          {today ? "Recovery day" : "No session planned"}
+        </h2>
+        <p
+          style={{
+            margin: "8px 0 0",
+            fontSize: 14,
+            lineHeight: 1.55,
+            color: "rgba(255,255,255,0.62)",
+          }}
+        >
+          {today
+            ? (today.notes ??
+              today.cardio_note ??
+              "Easy walking, light mobility, stretching if desired. Sleep and recover fully.")
+            : "Nothing is scheduled for today in your plan."}
+        </p>
+        {!today && (
+          <Link to="/plan" className="sk-btn sk-btn-quiet" style={{ marginTop: 18 }}>
+            Open your plan
+          </Link>
+        )}
+      </section>
+    );
+  }
+
+  const todaysSession = history.find((s) => s.day_id === today.id && s.session_date === todayISO());
+  const done = todaysSession?.status === "completed";
+  const inProgress = todaysSession?.status === "in_progress";
+  const exs = day?.exercises ?? [];
+  const list = exs.map((we, i) => ({
+    id: we.id,
+    num: String(i + 1).padStart(2, "0"),
+    name: we.exercises.name,
+    scheme: we.exercises.category === "cardio" ? we.rep_range : `${we.sets} × ${we.rep_range}`,
+  }));
+  const shown = expanded ? list : list.slice(0, 4);
+  const duration =
+    today.estimated_minutes_min && today.estimated_minutes_max
+      ? `${today.estimated_minutes_min}–${today.estimated_minutes_max} min`
+      : "";
+
+  return (
+    <section aria-label="Today's workout" className="sk-fade sk-surface" style={card}>
+      {topLine}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <p className="sk-eyebrow" style={{ margin: 0 }}>
+          Today · {today.name}
+        </p>
+        <span className="sk-cap">{duration}</span>
+      </div>
+      <h2
+        style={{
+          margin: "10px 0 0",
+          fontSize: 22,
+          lineHeight: 1.25,
+          fontWeight: 600,
+          letterSpacing: "-0.025em",
+        }}
+      >
+        {today.focus ?? today.name}
+      </h2>
+      <div
+        className="sk-stat-row"
+        style={{
+          margin: "18px 0 6px",
+          borderTop: "1px solid rgba(255,255,255,0.06)",
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        {[
+          [String(exs.length || today.exercise_count), "Exercises"],
+          [
+            String(
+              exs.reduce((a, we) => a + (we.exercises.category === "cardio" ? 1 : we.sets), 0) ||
+                "—",
+            ),
+            "Sets",
+          ],
+          [String(exs.filter((we) => withHistory.has(we.exercise_id)).length), "With history"],
+        ].map(([v, l]) => (
+          <div key={l} style={{ padding: "14px 0" }}>
+            <p className="sk-num" style={{ margin: 0, fontSize: 22, fontWeight: 500 }}>
+              {v}
+            </p>
+            <p className="sk-cap" style={{ margin: "2px 0 0" }}>
+              {l}
+            </p>
+          </div>
+        ))}
+      </div>
+      <ol style={{ listStyle: "none", margin: "0 0 6px", padding: 0 }}>
+        {shown.map((ex) => (
+          <li
+            key={ex.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              padding: "11px 0",
+              borderBottom: "1px solid rgba(255,255,255,0.05)",
+            }}
+          >
+            <span
+              className="sk-num"
+              style={{ width: 18, fontSize: 12, color: "rgba(255,255,255,0.5)", letterSpacing: 0 }}
+            >
+              {ex.num}
+            </span>
+            <span
+              style={{
+                flex: 1,
+                minWidth: 0,
+                fontSize: 14,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {ex.name}
+            </span>
+            <span
+              className="sk-num"
+              style={{
+                fontSize: 12.5,
+                color: "rgba(255,255,255,0.62)",
+                whiteSpace: "nowrap",
+                letterSpacing: 0,
+              }}
+            >
+              {ex.scheme}
+            </span>
+          </li>
+        ))}
+      </ol>
+      {list.length > 4 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="sk-link-btn"
+          style={{ padding: "8px 0 0" }}
+        >
+          {expanded ? "Show less" : `Show all ${list.length} exercises`}
+        </button>
+      )}
+      {done ? (
+        <Link
+          to="/history/$id"
+          params={{ id: todaysSession!.id }}
+          className="sk-btn sk-btn-quiet"
+          style={{ marginTop: 18 }}
+        >
+          <Icon name="check" size={16} color={ACCENT} /> Completed today · view session
+        </Link>
+      ) : (
+        <Link
+          to="/workout/$slug"
+          params={{ slug: today.slug }}
+          search={{ start: true }}
+          className="sk-btn sk-btn-accent"
+          style={{ marginTop: 18 }}
+        >
+          {inProgress ? "Resume workout" : "Start workout"}
+          <Icon name="arrow" size={16} />
+        </Link>
+      )}
+    </section>
+  );
+}
+
+type RecentRow = SessionRowData;
+
+function Recent({ sessions }: { sessions: RecentRow[] }) {
+  return (
+    <section aria-label="Recent sessions" className="sk-fade" style={{ animationDelay: ".15s" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          marginBottom: 12,
+        }}
+      >
+        <h2 className="sk-h-section">Recent</h2>
+        <Link to="/progress" search={{ seg: "history" }} className="sk-link-btn">
+          See all
+        </Link>
+      </div>
+      <div className="sk-surface" style={{ borderRadius: 20, overflow: "hidden" }}>
+        {sessions.length === 0 ? (
+          <p
+            style={{
+              margin: 0,
+              padding: "18px 16px",
+              fontSize: 13.5,
+              color: "rgba(255,255,255,0.56)",
+            }}
+          >
+            Your finished workouts will show up here.
+          </p>
+        ) : (
+          sessions.map((s) => <SessionRow key={s.id} s={s} />)
+        )}
+      </div>
+    </section>
   );
 }

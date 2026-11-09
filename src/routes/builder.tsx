@@ -12,7 +12,7 @@ import { BODY_MAP_TO_SEARCH_TERMS, MuscleSlug } from "@/lib/muscles";
 export const Route = createFileRoute("/builder")({
   head: () => ({ meta: [{ title: "Custom Plan Builder — Skido" }] }),
   component: () => (
-    <AppShell>
+    <AppShell tab="plan" wide>
       <BuilderPage />
     </AppShell>
   ),
@@ -241,7 +241,7 @@ function BuilderPage() {
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "white" }}>
               Add to {DAY_LABELS[activeDayIdx]}
             </h3>
-            <p style={{ margin: "2px 0 0", fontSize: 11.5, color: "oklch(0.6 0.01 250)" }}>
+            <p style={{ margin: "2px 0 0", fontSize: 11.5, color: "rgba(255,255,255,0.6)" }}>
               {activeDay.exercises.length} exercise{activeDay.exercises.length === 1 ? "" : "s"} in workout
             </p>
           </div>
@@ -254,9 +254,9 @@ function BuilderPage() {
                 fontWeight: 600,
                 padding: "5px 9px",
                 borderRadius: 6,
-                border: "1px solid oklch(0.25 0.01 250)",
-                background: showBodyMap ? "oklch(0.92 0.25 110 / 15%)" : "oklch(0.16 0.005 250)",
-                color: showBodyMap ? "oklch(0.92 0.25 110)" : "oklch(0.75 0.01 250)",
+                border: "1px solid #232324",
+                background: showBodyMap ? "rgba(198,244,50,0.15)" : "#181819",
+                color: showBodyMap ? "#C6F432" : "rgba(255,255,255,0.75)",
                 cursor: "pointer",
               }}
             >
@@ -272,8 +272,8 @@ function BuilderPage() {
                   padding: "5px 12px",
                   borderRadius: 6,
                   border: "none",
-                  background: "oklch(0.92 0.25 110)",
-                  color: "oklch(0.07 0.01 110)",
+                  background: "#C6F432",
+                  color: "#0E0E0F",
                   cursor: "pointer",
                 }}
               >
@@ -291,9 +291,9 @@ function BuilderPage() {
               gap: 4,
               overflowX: "auto",
               padding: "6px 8px",
-              background: "oklch(0.09 0.004 250)",
+              background: "#101011",
               borderRadius: 8,
-              border: "1px solid oklch(0.2 0.005 250)",
+              border: "1px solid #1D1D1E",
               scrollbarWidth: "none",
             }}
           >
@@ -303,8 +303,8 @@ function BuilderPage() {
                 style={{
                   fontSize: 10.5,
                   fontWeight: 600,
-                  color: "oklch(0.92 0.25 110)",
-                  background: "oklch(0.18 0.01 250)",
+                  color: "#C6F432",
+                  background: "#1B1B1C",
                   padding: "2px 7px",
                   borderRadius: 4,
                   whiteSpace: "nowrap",
@@ -358,8 +358,8 @@ function BuilderPage() {
                   padding: "4px 9px",
                   borderRadius: 999,
                   border: "none",
-                  background: isCurrent ? "oklch(0.92 0.25 110)" : "oklch(0.18 0.01 250)",
-                  color: isCurrent ? "oklch(0.07 0.01 110)" : "oklch(0.75 0.01 250)",
+                  background: isCurrent ? "#C6F432" : "#1B1B1C",
+                  color: isCurrent ? "#0E0E0F" : "rgba(255,255,255,0.75)",
                   fontSize: 11,
                   fontWeight: 700,
                   cursor: "pointer",
@@ -380,8 +380,8 @@ function BuilderPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={{
             width: "100%",
-            background: "oklch(0.08 0.004 250)",
-            border: "1px solid oklch(0.22 0.005 250)",
+            background: "#0F0F10",
+            border: "1px solid #1F1F20",
             color: "white",
             padding: "9px 12px",
             borderRadius: 7,
@@ -403,11 +403,11 @@ function BuilderPage() {
           }}
         >
           {loadingSearch ? (
-            <div style={{ textAlign: "center", padding: "24px 0", color: "oklch(0.5 0.01 250)", fontSize: 12.5 }}>
+            <div style={{ textAlign: "center", padding: "24px 0", color: "rgba(255,255,255,0.5)", fontSize: 12.5 }}>
               Loading exercises...
             </div>
           ) : results?.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "24px 0", color: "oklch(0.5 0.01 250)", fontSize: 12.5 }}>
+            <div style={{ textAlign: "center", padding: "24px 0", color: "rgba(255,255,255,0.5)", fontSize: 12.5 }}>
               No exercises found matching your search.
             </div>
           ) : (
@@ -419,8 +419,8 @@ function BuilderPage() {
                   onClick={() => toggleAddExercise(ex)}
                   style={{
                     padding: "9px 11px",
-                    background: isAdded ? "oklch(0.18 0.01 250)" : "oklch(0.09 0.004 250)",
-                    border: isAdded ? "1.5px solid oklch(0.92 0.25 110 / 50%)" : "1px solid oklch(0.2 0.005 250)",
+                    background: isAdded ? "#1B1B1C" : "#101011",
+                    border: isAdded ? "1.5px solid rgba(198,244,50,0.5)" : "1px solid #1D1D1E",
                     borderRadius: 7,
                     display: "flex",
                     justifyContent: "space-between",
@@ -448,8 +448,8 @@ function BuilderPage() {
                         <span
                           style={{
                             fontSize: 9.5,
-                            background: "oklch(0.22 0.005 250)",
-                            color: "oklch(0.75 0.01 250)",
+                            background: "#1F1F20",
+                            color: "rgba(255,255,255,0.75)",
                             padding: "1px 5px",
                             borderRadius: 3,
                           }}
@@ -461,8 +461,8 @@ function BuilderPage() {
                         <span
                           style={{
                             fontSize: 9.5,
-                            background: "oklch(0.16 0.005 250)",
-                            color: "oklch(0.6 0.01 250)",
+                            background: "#181819",
+                            color: "rgba(255,255,255,0.6)",
                             padding: "1px 5px",
                             borderRadius: 3,
                           }}
@@ -475,8 +475,8 @@ function BuilderPage() {
 
                   <button
                     style={{
-                      background: isAdded ? "oklch(0.2 0.05 30)" : "oklch(0.92 0.25 110)",
-                      color: isAdded ? "oklch(0.7 0.15 40)" : "oklch(0.07 0.01 110)",
+                      background: isAdded ? "oklch(0.2 0.05 30)" : "#C6F432",
+                      color: isAdded ? "#FF4D4F" : "#0E0E0F",
                       border: "none",
                       borderRadius: 5,
                       padding: "5px 10px",
@@ -506,7 +506,7 @@ function BuilderPage() {
           <Link
             to="/plan"
             style={{
-              color: "oklch(0.65 0.02 250)",
+              color: "rgba(255,255,255,0.65)",
               textDecoration: "none",
               fontSize: 13,
               display: "inline-flex",
@@ -520,8 +520,8 @@ function BuilderPage() {
             onClick={handleSave}
             disabled={isSaving}
             style={{
-              background: "oklch(0.92 0.25 110)",
-              color: "oklch(0.07 0.01 110)",
+              background: "#C6F432",
+              color: "#0E0E0F",
               border: "none",
               borderRadius: 8,
               padding: "7px 16px",
@@ -541,7 +541,7 @@ function BuilderPage() {
           Custom Plan Builder
         </h1>
         {existingCustom && (
-          <div style={{ fontSize: 11.5, color: "oklch(0.7 0.15 40)", fontWeight: 500 }}>
+          <div style={{ fontSize: 11.5, color: "#FF4D4F", fontWeight: 500 }}>
             Saving will overwrite your current custom schedule.
           </div>
         )}
@@ -572,11 +572,11 @@ function BuilderPage() {
                 minWidth: 64,
                 padding: "8px 10px",
                 borderRadius: 8,
-                border: isActive ? "1.5px solid oklch(0.92 0.25 110)" : "1px solid oklch(0.22 0.005 250)",
-                background: isActive ? "oklch(0.18 0.01 250)" : "oklch(0.11 0.005 250)",
+                border: isActive ? "1.5px solid #C6F432" : "1px solid #1F1F20",
+                background: isActive ? "#1B1B1C" : "#131314",
                 cursor: "pointer",
                 textAlign: "center",
-                color: isActive ? "white" : "oklch(0.65 0.01 250)",
+                color: isActive ? "white" : "rgba(255,255,255,0.65)",
                 transition: "all 0.15s",
               }}
             >
@@ -585,7 +585,7 @@ function BuilderPage() {
                 style={{
                   fontSize: 10,
                   marginTop: 2,
-                  color: count > 0 ? "oklch(0.92 0.25 110)" : "oklch(0.45 0.01 250)",
+                  color: count > 0 ? "#C6F432" : "rgba(255,255,255,0.45)",
                   fontWeight: count > 0 ? 700 : 400,
                 }}
               >
@@ -602,15 +602,15 @@ function BuilderPage() {
         <div
           className="builder-day-panel"
           style={{
-            background: "oklch(0.12 0.005 250)",
-            border: "1px solid oklch(0.24 0.005 250)",
+            background: "#141415",
+            border: "1px solid #222223",
             borderRadius: 12,
             padding: "16px 14px",
           }}
         >
           {/* Day Title Input */}
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "oklch(0.65 0.01 250)", marginBottom: 4 }}>
+            <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "rgba(255,255,255,0.65)", marginBottom: 4 }}>
               Workout Name
             </label>
             <input
@@ -620,8 +620,8 @@ function BuilderPage() {
               onChange={(e) => updateActiveDay((d) => ({ ...d, name: e.target.value }))}
               style={{
                 width: "100%",
-                background: "oklch(0.08 0.004 250)",
-                border: "1px solid oklch(0.22 0.005 250)",
+                background: "#0F0F10",
+                border: "1px solid #1F1F20",
                 color: "white",
                 padding: "9px 12px",
                 borderRadius: 7,
@@ -639,9 +639,9 @@ function BuilderPage() {
               id="isOptional"
               checked={activeDay.isOptional}
               onChange={(e) => updateActiveDay((d) => ({ ...d, isOptional: e.target.checked }))}
-              style={{ width: 15, height: 15, accentColor: "oklch(0.92 0.25 110)", cursor: "pointer" }}
+              style={{ width: 15, height: 15, accentColor: "#C6F432", cursor: "pointer" }}
             />
-            <label htmlFor="isOptional" style={{ fontSize: 12, color: "oklch(0.7 0.01 250)", cursor: "pointer" }}>
+            <label htmlFor="isOptional" style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", cursor: "pointer" }}>
               Optional workout (no penalty if skipped)
             </label>
           </div>
@@ -654,8 +654,8 @@ function BuilderPage() {
             <button
               onClick={() => setMobileModalOpen(true)}
               style={{
-                background: "oklch(0.92 0.25 110)",
-                color: "oklch(0.07 0.01 110)",
+                background: "#C6F432",
+                color: "#0E0E0F",
                 border: "none",
                 borderRadius: 6,
                 padding: "5px 12px",
@@ -676,21 +676,21 @@ function BuilderPage() {
               style={{
                 padding: "32px 14px",
                 textAlign: "center",
-                border: "1px dashed oklch(0.24 0.01 250)",
+                border: "1px dashed #222223",
                 borderRadius: 10,
-                background: "oklch(0.09 0.004 250)",
+                background: "#101011",
               }}
             >
               <div style={{ fontSize: 24, marginBottom: 4 }}>💤</div>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: "white" }}>Rest Day</div>
-              <p style={{ fontSize: 12, color: "oklch(0.55 0.01 250)", margin: "4px 0 14px" }}>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", margin: "4px 0 14px" }}>
                 No exercises added for {DAY_LABELS[activeDayIdx]}.
               </p>
               <button
                 onClick={() => setMobileModalOpen(true)}
                 style={{
-                  background: "oklch(0.92 0.25 110)",
-                  color: "oklch(0.07 0.01 110)",
+                  background: "#C6F432",
+                  color: "#0E0E0F",
                   border: "none",
                   borderRadius: 6,
                   padding: "8px 16px",
@@ -708,8 +708,8 @@ function BuilderPage() {
                 <div
                   key={`${ex.exerciseId}-${idx}`}
                   style={{
-                    background: "oklch(0.09 0.004 250)",
-                    border: "1px solid oklch(0.22 0.005 250)",
+                    background: "#101011",
+                    border: "1px solid #1F1F20",
                     borderRadius: 8,
                     padding: "10px 12px",
                   }}
@@ -720,8 +720,8 @@ function BuilderPage() {
                         style={{
                           fontSize: 10.5,
                           fontWeight: 700,
-                          color: "oklch(0.92 0.25 110)",
-                          background: "oklch(0.18 0.01 250)",
+                          color: "#C6F432",
+                          background: "#1B1B1C",
                           width: 20,
                           height: 20,
                           borderRadius: 999,
@@ -752,10 +752,10 @@ function BuilderPage() {
                         onClick={() => moveExercise(idx, "up")}
                         disabled={idx === 0}
                         style={{
-                          background: "oklch(0.16 0.005 250)",
+                          background: "#181819",
                           border: "none",
                           borderRadius: 4,
-                          color: idx === 0 ? "oklch(0.3 0.01 250)" : "white",
+                          color: idx === 0 ? "#282829" : "white",
                           width: 24,
                           height: 24,
                           fontSize: 11,
@@ -768,10 +768,10 @@ function BuilderPage() {
                         onClick={() => moveExercise(idx, "down")}
                         disabled={idx === activeDay.exercises.length - 1}
                         style={{
-                          background: "oklch(0.16 0.005 250)",
+                          background: "#181819",
                           border: "none",
                           borderRadius: 4,
-                          color: idx === activeDay.exercises.length - 1 ? "oklch(0.3 0.01 250)" : "white",
+                          color: idx === activeDay.exercises.length - 1 ? "#282829" : "white",
                           width: 24,
                           height: 24,
                           fontSize: 11,
@@ -786,7 +786,7 @@ function BuilderPage() {
                           background: "oklch(0.2 0.05 30)",
                           border: "none",
                           borderRadius: 4,
-                          color: "oklch(0.7 0.15 40)",
+                          color: "#FF4D4F",
                           width: 24,
                           height: 24,
                           fontSize: 11,
@@ -804,7 +804,7 @@ function BuilderPage() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr 1fr", gap: 6 }}>
                     {ex.category === "cardio" ? (
                       <div style={{ gridColumn: "1 / -1" }}>
-                        <label style={{ display: "block", fontSize: 10, color: "oklch(0.55 0.01 250)", marginBottom: 2 }}>
+                        <label style={{ display: "block", fontSize: 10, color: "rgba(255,255,255,0.55)", marginBottom: 2 }}>
                           Duration (mins)
                         </label>
                         <input
@@ -814,8 +814,8 @@ function BuilderPage() {
                           onChange={(e) => updateExercise(idx, { repRange: e.target.value })}
                           style={{
                             width: "100%",
-                            background: "oklch(0.14 0.005 250)",
-                            border: "1px solid oklch(0.24 0.005 250)",
+                            background: "#161617",
+                            border: "1px solid #222223",
                             color: "white",
                             padding: "5px 8px",
                             borderRadius: 4,
@@ -827,7 +827,7 @@ function BuilderPage() {
                     ) : (
                       <>
                         <div>
-                          <label style={{ display: "block", fontSize: 10, color: "oklch(0.55 0.01 250)", marginBottom: 2 }}>
+                          <label style={{ display: "block", fontSize: 10, color: "rgba(255,255,255,0.55)", marginBottom: 2 }}>
                             Sets
                           </label>
                           <input
@@ -837,8 +837,8 @@ function BuilderPage() {
                             onChange={(e) => updateExercise(idx, { sets: Number(e.target.value) })}
                             style={{
                               width: "100%",
-                              background: "oklch(0.14 0.005 250)",
-                              border: "1px solid oklch(0.24 0.005 250)",
+                              background: "#161617",
+                              border: "1px solid #222223",
                               color: "white",
                               padding: "5px 8px",
                               borderRadius: 4,
@@ -848,7 +848,7 @@ function BuilderPage() {
                           />
                         </div>
                         <div>
-                          <label style={{ display: "block", fontSize: 10, color: "oklch(0.55 0.01 250)", marginBottom: 2 }}>
+                          <label style={{ display: "block", fontSize: 10, color: "rgba(255,255,255,0.55)", marginBottom: 2 }}>
                             Reps
                           </label>
                           <input
@@ -858,8 +858,8 @@ function BuilderPage() {
                             onChange={(e) => updateExercise(idx, { repRange: e.target.value })}
                             style={{
                               width: "100%",
-                              background: "oklch(0.14 0.005 250)",
-                              border: "1px solid oklch(0.24 0.005 250)",
+                              background: "#161617",
+                              border: "1px solid #222223",
                               color: "white",
                               padding: "5px 8px",
                               borderRadius: 4,
@@ -869,7 +869,7 @@ function BuilderPage() {
                           />
                         </div>
                         <div>
-                          <label style={{ display: "block", fontSize: 10, color: "oklch(0.55 0.01 250)", marginBottom: 2 }}>
+                          <label style={{ display: "block", fontSize: 10, color: "rgba(255,255,255,0.55)", marginBottom: 2 }}>
                             Rest (s)
                           </label>
                           <input
@@ -880,8 +880,8 @@ function BuilderPage() {
                             onChange={(e) => updateExercise(idx, { restSeconds: Number(e.target.value) })}
                             style={{
                               width: "100%",
-                              background: "oklch(0.14 0.005 250)",
-                              border: "1px solid oklch(0.24 0.005 250)",
+                              background: "#161617",
+                              border: "1px solid #222223",
                               color: "white",
                               padding: "5px 8px",
                               borderRadius: 4,
@@ -903,8 +903,8 @@ function BuilderPage() {
         <div
           className="hidden md:block builder-lib-panel"
           style={{
-            background: "oklch(0.12 0.005 250)",
-            border: "1px solid oklch(0.24 0.005 250)",
+            background: "#141415",
+            border: "1px solid #222223",
             borderRadius: 12,
             padding: "16px 14px",
           }}
@@ -930,8 +930,8 @@ function BuilderPage() {
         >
           <div
             style={{
-              background: "oklch(0.12 0.005 250)",
-              borderTop: "1px solid oklch(0.28 0.005 250)",
+              background: "#141415",
+              borderTop: "1px solid #262627",
               borderRadius: "16px 16px 0 0",
               padding: "16px 14px 28px",
               width: "100%",

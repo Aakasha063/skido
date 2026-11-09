@@ -1,10 +1,10 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import type { CSSProperties, ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
+import { ACCENT, Avatar, MUTED, PageSpinner, SubHeader } from "@/components/sk/ui";
 import { useAuth } from "@/lib/auth";
-import { fetchLeaderboard } from "@/lib/api";
-import { ironScore, getInitials, colorFromId } from "@/lib/gamification";
+import { useLeaderboard, useProfile } from "@/lib/hooks";
+import { memberColor } from "@/lib/skido";
 
 export const Route = createFileRoute("/leaderboard")({
   head: () => ({
@@ -12,194 +12,208 @@ export const Route = createFileRoute("/leaderboard")({
       { title: "Leaderboard — Skido" },
       {
         name: "description",
-        content: "Training score leaderboard — ranks consistency and progression, not raw volume.",
+        content: "Iron score leaderboard: consistency and progression over the last 30 days.",
       },
     ],
   }),
   component: () => (
-    <AppShell>
-      <LeaderboardPage />
+    <AppShell tab="profile">
+      <Leaderboard />
     </AppShell>
   ),
 });
 
-function LeaderboardPage() {
+function Leaderboard() {
   const { user } = useAuth();
   const router = useRouter();
-  const { data: board } = useQuery({
-    queryKey: ["leaderboard", 30],
-    queryFn: () => fetchLeaderboard(30),
-    enabled: !!user,
-  });
+  const { data: profile } = useProfile();
+  const { ranked, isLoading } = useLeaderboard();
 
-  const ranked = useMemo(() => {
-    return (board ?? [])
-      .map((r) => ({ ...r, score: ironScore(r) }))
-      .sort((a, b) => b.score - a.score);
-  }, [board]);
-
-  const meIdx = ranked.findIndex((r) => r.user_id === user?.id);
-  const rankDistanceLabel =
-    meIdx === -1
-      ? "Complete a session to join the leaderboard."
-      : meIdx === 0
-        ? "You're #1 — leading the board."
-        : `${ranked[meIdx - 1]!.score - ranked[meIdx]!.score} pts behind #${meIdx} · ${ranked[meIdx - 1]!.display_name}`;
+  const colorFor = (r: (typeof ranked)[number]) =>
+    (r.user_id === user?.id ? (profile?.avatar_color ?? r.avatar_color) : r.avatar_color) ??
+    memberColor(r.user_id);
+  const imageFor = (r: (typeof ranked)[number]) =>
+    r.user_id === user?.id ? (profile?.avatar_url ?? r.avatar_url) : r.avatar_url;
+  const podium = [ranked[1], ranked[0], ranked[2]].filter(Boolean) as typeof ranked;
 
   return (
-    <div className="page-enter" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <button
-          onClick={() => router.navigate({ to: "/profile" })}
-          aria-label="Back"
+    <div className="sk-fade">
+      <SubHeader
+        eyebrow="Iron score"
+        title="Leaderboard"
+        onBack={() => router.navigate({ to: "/profile" })}
+      />
+      <p style={{ margin: "-12px 0 20px", fontSize: 13, color: MUTED }}>
+        Iron score rewards consistency and progression, not raw volume. Last 30 days.
+      </p>
+      {isLoading && <PageSpinner />}
+      {!isLoading && ranked.length === 0 && (
+        <p style={{ margin: 0, fontSize: 14, color: MUTED }}>No athletes yet.</p>
+      )}
+
+      {podium.length > 0 && (
+        <div
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            border: "1px solid oklch(0.27 0.005 250)",
-            background: "transparent",
-            color: "inherit",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
+            display: "grid",
+            gridTemplateColumns: `repeat(${podium.length}, minmax(0, 1fr))`,
+            gap: 8,
+            alignItems: "end",
+            marginBottom: 16,
           }}
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          >
-            <line x1="19" y1="12" x2="5" y2="12" />
-            <polyline points="11,18 5,12 11,6" />
-          </svg>
-        </button>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Leaderboard</h1>
-          <p style={{ margin: "2px 0 0", fontSize: 12, color: "oklch(0.63 0.006 250)" }}>
-            Training score · consistency and progression, not raw volume
-          </p>
-        </div>
-      </div>
-
-      <p style={{ margin: 0, fontSize: 13, color: "oklch(0.63 0.006 250)" }}>{rankDistanceLabel}</p>
-
-      <div
-        style={{ borderRadius: 12, border: "1px solid oklch(0.27 0.005 250)", overflowX: "auto" }}
-      >
-        <table style={{ width: "100%", minWidth: 360, borderCollapse: "collapse", fontSize: 13 }}>
-          <thead style={{ background: "oklch(0.22 0.005 250 / 50%)" }}>
-            <tr>
-              {["#", "Athlete", "Score", "Sessions"].map((h, i) => (
-                <th
-                  key={h}
+          {podium.map((r) => {
+            const rk = ranked.indexOf(r) + 1;
+            const me = r.user_id === user?.id;
+            return (
+              <AthleteLink
+                key={r.user_id}
+                me={me}
+                userId={r.user_id}
+                className="sk-surface"
+                style={{
+                  borderRadius: 20,
+                  padding: "16px 8px",
+                  height: rk === 1 ? 168 : rk === 2 ? 148 : 136,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  color: "inherit",
+                  textDecoration: "none",
+                }}
+              >
+                <Avatar
+                  name={r.display_name}
+                  image={imageFor(r)}
+                  color={colorFor(r)}
+                  size={40}
+                  radius={13}
+                />
+                <span
                   style={{
-                    textAlign: i <= 1 ? "left" : "right",
-                    padding: "10px 12px",
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    color: "oklch(0.63 0.006 250)",
+                    marginTop: 8,
+                    fontSize: 12.5,
                     fontWeight: 500,
+                    maxWidth: "100%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {ranked.map((r, i) => {
-              const isMe = r.user_id === user?.id;
-              return (
-                <tr
-                  key={r.user_id}
-                  onClick={() =>
-                    router.navigate({ to: "/leaderboard/$userId", params: { userId: r.user_id } })
-                  }
+                  {me ? "You" : (r.display_name ?? "Athlete").split(" ")[0]}
+                </span>
+                <span
+                  className="sk-num"
+                  style={{ fontSize: 12, color: "rgba(255,255,255,0.56)", letterSpacing: 0 }}
+                >
+                  {r.score}
+                </span>
+                <span
+                  className="sk-num"
                   style={{
-                    borderTop: "1px solid oklch(0.27 0.005 250)",
-                    background: isMe ? "oklch(0.92 0.25 110 / 5%)" : "transparent",
-                    cursor: "pointer",
+                    marginTop: 6,
+                    fontSize: 20,
+                    fontWeight: 500,
+                    color: rk === 1 ? ACCENT : "rgba(255,255,255,0.75)",
                   }}
                 >
-                  <td style={{ padding: "10px 12px" }}>{i + 1}</td>
-                  <td style={{ padding: "8px 12px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div
-                        style={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: 8,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontFamily: "'Inter'",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: "oklch(0.07 0.01 110)",
-                          flexShrink: 0,
-                          overflow: "hidden",
-                          background: r.avatar_url ? undefined : r.avatar_color || colorFromId(r.user_id),
-                          backgroundImage: r.avatar_url ? `url(${r.avatar_url})` : undefined,
-                          backgroundSize: "cover",
-                          backgroundPosition: "center",
-                        }}
-                      >
-                        {!r.avatar_url && getInitials(r.display_name)}
-                      </div>
-                      <span>
-                        {r.display_name}
-                        {isMe && (
-                          <span
-                            style={{ marginLeft: 6, fontSize: 12, color: "oklch(0.92 0.25 110)" }}
-                          >
-                            you
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  </td>
-                  <td
-                    style={{
-                      padding: "10px 12px",
-                      textAlign: "right",
-                      fontWeight: 500,
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  >
-                    {r.score}
-                  </td>
-                  <td
-                    style={{
-                      padding: "10px 12px",
-                      textAlign: "right",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  >
-                    {r.sessions}
-                  </td>
-                </tr>
-              );
-            })}
-            {ranked.length === 0 && (
-              <tr>
-                <td
-                  colSpan={4}
-                  style={{ padding: 24, textAlign: "center", color: "oklch(0.45 0.006 250)" }}
+                  {rk}
+                </span>
+              </AthleteLink>
+            );
+          })}
+        </div>
+      )}
+
+      {ranked.length > 0 && (
+        <div className="sk-surface" style={{ borderRadius: 20, overflow: "hidden" }}>
+          {ranked.map((r, i) => {
+            const me = r.user_id === user?.id;
+            return (
+              <AthleteLink
+                key={r.user_id}
+                me={me}
+                userId={r.user_id}
+                className="sk-row-btn"
+                style={{ background: me ? "rgba(255,255,255,0.04)" : "transparent" }}
+              >
+                <span
+                  className="sk-num"
+                  style={{
+                    width: 20,
+                    fontSize: 13,
+                    color: "rgba(255,255,255,0.56)",
+                    letterSpacing: 0,
+                  }}
                 >
-                  No athletes yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                  {i + 1}
+                </span>
+                <Avatar
+                  name={r.display_name}
+                  image={imageFor(r)}
+                  color={colorFor(r)}
+                  size={34}
+                  radius={11}
+                  fontSize={12}
+                />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 14,
+                      fontWeight: 500,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {r.display_name ?? "Athlete"}
+                    {me ? " (you)" : ""}
+                  </span>
+                  <span
+                    style={{
+                      display: "block",
+                      marginTop: 2,
+                      fontSize: 12,
+                      color: "rgba(255,255,255,0.56)",
+                    }}
+                  >
+                    {r.sessions} sessions · {r.active_weeks} active weeks
+                  </span>
+                </span>
+                <span className="sk-num" style={{ fontSize: 14, letterSpacing: 0 }}>
+                  {r.score}
+                </span>
+              </AthleteLink>
+            );
+          })}
+        </div>
+      )}
     </div>
+  );
+}
+
+/** Your own row opens your profile; anyone else's opens their member page. */
+function AthleteLink({
+  me,
+  userId,
+  className,
+  style,
+  children,
+}: {
+  me: boolean;
+  userId: string;
+  className: string;
+  style: CSSProperties;
+  children: ReactNode;
+}) {
+  return me ? (
+    <Link to="/profile" className={className} style={style}>
+      {children}
+    </Link>
+  ) : (
+    <Link to="/leaderboard/$userId" params={{ userId }} className={className} style={style}>
+      {children}
+    </Link>
   );
 }

@@ -138,8 +138,8 @@ export function SubstitutionModal({
     >
       <div
         style={{
-          background: "oklch(0.12 0.005 250)",
-          border: "1px solid oklch(0.27 0.005 250)",
+          background: "#141415",
+          border: "1px solid #252526",
           borderRadius: 14,
           width: "100%",
           maxWidth: 500,
@@ -152,11 +152,11 @@ export function SubstitutionModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ padding: "16px 14px 12px", borderBottom: "1px solid oklch(0.22 0.005 250)" }}>
+        <div style={{ padding: "16px 14px 12px", borderBottom: "1px solid #1F1F20" }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
             <div>
               <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Replace Exercise</h2>
-              <p style={{ margin: "3px 0 0", fontSize: 12, color: "oklch(0.63 0.006 250)" }}>
+              <p style={{ margin: "3px 0 0", fontSize: 12, color: "rgba(255,255,255,0.63)" }}>
                 Replacing <strong>{originalExerciseName}</strong> ({muscleGroupLabel})
               </p>
             </div>
@@ -165,7 +165,7 @@ export function SubstitutionModal({
               style={{
                 background: "transparent",
                 border: "none",
-                color: "oklch(0.63 0.006 250)",
+                color: "rgba(255,255,255,0.63)",
                 cursor: "pointer",
                 padding: 4,
                 fontSize: 16,
@@ -184,8 +184,8 @@ export function SubstitutionModal({
             style={{
               width: "100%",
               marginTop: 14,
-              background: "oklch(0.08 0.004 250)",
-              border: "1px solid oklch(0.25 0.01 250)",
+              background: "#0F0F10",
+              border: "1px solid #232324",
               color: "white",
               padding: "10px 14px",
               borderRadius: 8,
@@ -206,8 +206,8 @@ export function SubstitutionModal({
                     padding: "3px 9px",
                     borderRadius: 999,
                     border: "none",
-                    background: active ? "oklch(0.92 0.25 110)" : "oklch(0.18 0.005 250)",
-                    color: active ? "oklch(0.07 0.01 110)" : "oklch(0.7 0.01 250)",
+                    background: active ? "#C6F432" : "#1B1B1C",
+                    color: active ? "#0E0E0F" : "rgba(255,255,255,0.7)",
                     fontSize: 11,
                     fontWeight: 600,
                     cursor: "pointer",
@@ -224,17 +224,17 @@ export function SubstitutionModal({
         {/* Results List */}
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
           {isLoading ? (
-            <div style={{ fontSize: 13, color: "oklch(0.5 0.01 250)", textAlign: "center", padding: "24px 0" }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", textAlign: "center", padding: "24px 0" }}>
               Loading related exercises...
             </div>
           ) : filteredList.length === 0 ? (
-            <div style={{ fontSize: 13, color: "oklch(0.5 0.01 250)", textAlign: "center", padding: "24px 0" }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", textAlign: "center", padding: "24px 0" }}>
               No exercises found matching your filter.
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "oklch(0.5 0.01 250)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   {search ? "Search Results" : `All ${muscleGroupLabel} Exercises (${filteredList.length})`}
                 </span>
               </div>
@@ -245,8 +245,8 @@ export function SubstitutionModal({
                   onClick={() => onSelect(ex.id)}
                   style={{
                     padding: "10px 14px",
-                    background: "oklch(0.16 0.005 250)",
-                    border: "1px solid oklch(0.24 0.005 250)",
+                    background: "#181819",
+                    border: "1px solid #222223",
                     borderRadius: 10,
                     cursor: "pointer",
                     display: "flex",
@@ -287,7 +287,7 @@ export function SubstitutionModal({
                           width: 40,
                           height: 40,
                           borderRadius: 6,
-                          background: "oklch(0.22 0.005 250)",
+                          background: "#1F1F20",
                           flexShrink: 0,
                           display: "flex",
                           alignItems: "center",
@@ -317,8 +317,8 @@ export function SubstitutionModal({
                           <span
                             style={{
                               fontSize: 10,
-                              background: "oklch(0.22 0.01 250)",
-                              color: "oklch(0.8 0.01 250)",
+                              background: "#1F1F20",
+                              color: "rgba(255,255,255,0.8)",
                               padding: "1px 6px",
                               borderRadius: 4,
                             }}
@@ -330,8 +330,8 @@ export function SubstitutionModal({
                           <span
                             style={{
                               fontSize: 10,
-                              background: "oklch(0.2 0.01 250)",
-                              color: "oklch(0.65 0.01 250)",
+                              background: "#1D1D1E",
+                              color: "rgba(255,255,255,0.65)",
                               padding: "1px 6px",
                               borderRadius: 4,
                             }}
@@ -346,8 +346,8 @@ export function SubstitutionModal({
                   {/* Right: Select Action */}
                   <button
                     style={{
-                      background: "oklch(0.92 0.25 110)",
-                      color: "oklch(0.07 0.01 110)",
+                      background: "#C6F432",
+                      color: "#0E0E0F",
                       border: "none",
                       borderRadius: 6,
                       padding: "6px 12px",

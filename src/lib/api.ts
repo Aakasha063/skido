@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Tables } from "@/integrations/supabase/types";
+import type { Database, Tables } from "@/integrations/supabase/types";
 import { epley1RM, todayISO } from "./format";
 
 export type Exercise = Tables<"exercises">;
@@ -509,15 +509,60 @@ export async function finishSession(params: {
   return evaluatePRs({ userId: params.userId, sessionId: params.sessionId });
 }
 
-export async function fetchHistory(userId: string) {
-  const { data, error } = await supabase
-    .from("workout_sessions")
-    .select("*")
-    .eq("user_id", userId)
-    .order("session_date", { ascending: false })
-    .limit(60);
+export type HistoryRow = Database["public"]["Functions"]["get_session_summaries"]["Returns"][number];
+
+/**
+ * The signed-in user's sessions (newest first, abandoned excluded), each with its
+ * working-set count, volume and PR count — one request. `userId` keys the cache;
+ * the database scopes rows to the caller.
+ */
+export async function fetchHistory(_userId: string): Promise<HistoryRow[]> {
+  const { data, error } = await supabase.rpc("get_session_summaries", { p_limit: 300 });
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map((r) => ({ ...r, volume: Number(r.volume) }));
+}
+
+export type StrengthPoint = Database["public"]["Functions"]["get_strength_history"]["Returns"][number];
+
+/** Best estimated 1RM per exercise per session date, for the strength charts. */
+export async function fetchStrengthHistory(_userId: string): Promise<StrengthPoint[]> {
+  const { data, error } = await supabase.rpc("get_strength_history");
+  if (error) throw error;
+  return (data ?? []).map((r) => ({
+    ...r,
+    best_e1rm: Number(r.best_e1rm),
+    best_weight: Number(r.best_weight),
+  }));
+}
+
+/** Best stored estimated 1RM per exercise, for live PR detection during a workout. */
+export async function fetchBestE1rm(userId: string, exerciseIds: string[]) {
+  if (exerciseIds.length === 0) return {} as Record<string, number>;
+  const { data, error } = await supabase
+    .from("personal_records")
+    .select("exercise_id, estimated_1rm")
+    .eq("user_id", userId)
+    .in("exercise_id", exerciseIds);
+  if (error) throw error;
+  const best: Record<string, number> = {};
+  for (const r of data ?? []) {
+    if (!r.exercise_id) continue;
+    const v = Number(r.estimated_1rm ?? 0);
+    if (v > (best[r.exercise_id] ?? 0)) best[r.exercise_id] = v;
+  }
+  return best;
+}
+
+/** Discard an unfinished workout: deleting the session removes its sets too (FK cascade). */
+export async function discardSession(sessionId: string) {
+  const { error } = await supabase.from("workout_sessions").delete().eq("id", sessionId);
+  if (error) throw error;
+}
+
+/** Stores how the session felt ("Rough" … "Great") in workout_sessions.mood. */
+export async function saveSessionMood(sessionId: string, mood: string | null) {
+  const { error } = await supabase.from("workout_sessions").update({ mood }).eq("id", sessionId);
+  if (error) throw error;
 }
 
 export async function fetchBodyMetrics(userId: string) {

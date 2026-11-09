@@ -6,7 +6,8 @@
  */
 import { dehydrate, hydrate, type QueryClient } from "@tanstack/react-query";
 
-const STORAGE_KEY = "skido:query-cache:v1";
+// Bump when a persisted query's data shape changes (v2: history rows from get_session_summaries).
+const STORAGE_KEY = "skido:query-cache:v2";
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_BYTES = 1_500_000;
 const PERSISTED_ROOTS = new Set([

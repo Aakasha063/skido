@@ -23,8 +23,8 @@ export default defineConfig({
         short_name: "Skido",
         description:
           "Log sets and reps, follow a structured weekly workout plan, track PRs, and see your bodyweight and strength progress over time.",
-        theme_color: "#fcee0a",
-        background_color: "#12130f",
+        theme_color: "#0b0b0c",
+        background_color: "#0b0b0c",
         display: "standalone",
         start_url: "/",
         scope: "/",

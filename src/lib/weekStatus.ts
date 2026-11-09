@@ -1,11 +1,17 @@
-import type { SessionRow } from "@/lib/api";
+/** The fields of a session row week status needs (satisfied by HistoryRow and SessionRow). */
+export type WeekSession = {
+  id: string;
+  day_id: string | null;
+  session_date: string;
+  status: string;
+};
 
-export type DayStatus = {
+export type DayStatus<S extends WeekSession = WeekSession> = {
   isToday: boolean;
   isDone: boolean;
   isMissed: boolean;
   isUpcoming: boolean;
-  session: SessionRow | undefined;
+  session: S | undefined;
 };
 
 const toISO = (d: Date) =>
@@ -21,7 +27,7 @@ const toISO = (d: Date) =>
  * Friday never had a chance to train Monday–Thursday, so those fall back to
  * "Upcoming" instead.
  */
-export function buildWeekStatus(history: SessionRow[], joinedISO = "") {
+export function buildWeekStatus<S extends WeekSession>(history: S[], joinedISO = "") {
   const now = new Date();
   const dow = now.getDay();
   const todayISOStr = toISO(now);
@@ -57,7 +63,7 @@ export function buildWeekStatus(history: SessionRow[], joinedISO = "") {
     id: string;
     day_of_week: number | null;
     is_rest?: boolean | null;
-  }): DayStatus {
+  }): DayStatus<S> {
     const isToday = day.day_of_week === dow;
     const dayDate = day.day_of_week == null ? null : dateForDow(day.day_of_week);
     const iso = dayDate ? toISO(dayDate) : null;

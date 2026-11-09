@@ -1,7 +1,7 @@
 export function HIITInstructions() {
   return (
-    <div style={{ padding: "0 4px", fontSize: 14, lineHeight: 1.6, color: "oklch(0.85 0.005 250)" }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, marginTop: 0, color: "oklch(0.96 0.002 250)", textTransform: "uppercase" }}>
+    <div style={{ padding: "0 4px", fontSize: 14, lineHeight: 1.6, color: "rgba(255,255,255,0.85)" }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginTop: 0, color: "#FFFFFF", textTransform: "uppercase" }}>
         SATURDAY — OPTIONAL HIIT / CONDITIONING DAY
       </h2>
       <p style={{ margin: "12px 0" }}>
@@ -11,14 +11,14 @@ export function HIITInstructions() {
         <br />
         <strong>Duration:</strong> ~40–50 minutes
       </p>
-      <div style={{ padding: "12px 16px", background: "oklch(0.16 0.005 250)", borderRadius: 8, borderLeft: "4px solid oklch(0.92 0.25 110)", margin: "16px 0" }}>
+      <div style={{ padding: "12px 16px", background: "#181819", borderRadius: 8, borderLeft: "4px solid #C6F432", margin: "16px 0" }}>
         <strong>Important:</strong> This is optional. If recovery is poor, take Saturday as rest.
       </div>
 
-      <hr style={{ border: "none", borderTop: "1px solid oklch(0.27 0.005 250)", margin: "24px 0" }} />
+      <hr style={{ border: "none", borderTop: "1px solid #252526", margin: "24px 0" }} />
 
-      <h3 style={{ fontSize: 16, fontWeight: 700, color: "oklch(0.96 0.002 250)", textTransform: "uppercase" }}>1. WARM-UP — 8 MINUTES</h3>
-      <p style={{ fontWeight: 600, color: "oklch(0.63 0.006 250)", margin: "8px 0" }}>2 rounds</p>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF", textTransform: "uppercase" }}>1. WARM-UP — 8 MINUTES</h3>
+      <p style={{ fontWeight: 600, color: "rgba(255,255,255,0.63)", margin: "8px 0" }}>2 rounds</p>
       <ul style={{ paddingLeft: 20, margin: "12px 0" }}>
         <li>Jumping Jacks — 30 sec</li>
         <li>Skipping — 45 sec</li>
@@ -28,79 +28,79 @@ export function HIITInstructions() {
         <li>Easy Push-ups — 5 reps</li>
         <li>Dead Hang — 20 sec</li>
       </ul>
-      <p style={{ fontStyle: "italic", color: "oklch(0.63 0.006 250)" }}>Rest 30 sec between rounds.</p>
+      <p style={{ fontStyle: "italic", color: "rgba(255,255,255,0.63)" }}>Rest 30 sec between rounds.</p>
 
-      <hr style={{ border: "none", borderTop: "1px solid oklch(0.27 0.005 250)", margin: "24px 0" }} />
+      <hr style={{ border: "none", borderTop: "1px solid #252526", margin: "24px 0" }} />
 
-      <h3 style={{ fontSize: 16, fontWeight: 700, color: "oklch(0.96 0.002 250)", textTransform: "uppercase" }}>2. SKIPPING / ROPE INTERVALS</h3>
-      <p style={{ fontWeight: 600, color: "oklch(0.63 0.006 250)", margin: "8px 0" }}>6 rounds</p>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF", textTransform: "uppercase" }}>2. SKIPPING / ROPE INTERVALS</h3>
+      <p style={{ fontWeight: 600, color: "rgba(255,255,255,0.63)", margin: "8px 0" }}>6 rounds</p>
       <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "12px 0", fontWeight: 600 }}>
         <span>30 sec — fast skipping</span>
-        <span style={{ color: "oklch(0.45 0.006 250)" }}>↓</span>
+        <span style={{ color: "rgba(255,255,255,0.45)" }}>↓</span>
         <span>30 sec — easy skipping / rest</span>
       </div>
-      <p style={{ fontStyle: "italic", color: "oklch(0.63 0.006 250)" }}>
+      <p style={{ fontStyle: "italic", color: "rgba(255,255,255,0.63)" }}>
         Keep the first few rounds controlled.<br/>
         Do not turn this into an all-out sprint immediately.
       </p>
 
-      <hr style={{ border: "none", borderTop: "1px solid oklch(0.27 0.005 250)", margin: "24px 0" }} />
+      <hr style={{ border: "none", borderTop: "1px solid #252526", margin: "24px 0" }} />
 
-      <h3 style={{ fontSize: 16, fontWeight: 700, color: "oklch(0.96 0.002 250)", textTransform: "uppercase" }}>3. BODYWEIGHT CONDITIONING CIRCUIT</h3>
-      <p style={{ fontWeight: 600, color: "oklch(0.63 0.006 250)", margin: "8px 0" }}>4 rounds</p>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF", textTransform: "uppercase" }}>3. BODYWEIGHT CONDITIONING CIRCUIT</h3>
+      <p style={{ fontWeight: 600, color: "rgba(255,255,255,0.63)", margin: "8px 0" }}>4 rounds</p>
       
       <div style={{ display: "flex", flexDirection: "column", gap: 16, margin: "16px 0" }}>
         <div>
           <strong>1. Pull-ups — 5–8 reps</strong>
-          <p style={{ margin: "4px 0 0", color: "oklch(0.63 0.006 250)" }}>Use assisted pull-ups if necessary. Do NOT go to failure. Leave approx 2 reps in reserve.</p>
+          <p style={{ margin: "4px 0 0", color: "rgba(255,255,255,0.63)" }}>Use assisted pull-ups if necessary. Do NOT go to failure. Leave approx 2 reps in reserve.</p>
         </div>
-        <div style={{ textAlign: "center", color: "oklch(0.45 0.006 250)" }}>↓</div>
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.45)" }}>↓</div>
         <div>
           <strong>2. Push-ups — 10–15 reps</strong>
-          <p style={{ margin: "4px 0 0", color: "oklch(0.63 0.006 250)" }}>Controlled reps.</p>
+          <p style={{ margin: "4px 0 0", color: "rgba(255,255,255,0.63)" }}>Controlled reps.</p>
         </div>
-        <div style={{ textAlign: "center", color: "oklch(0.45 0.006 250)" }}>↓</div>
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.45)" }}>↓</div>
         <div>
           <strong>3. Dips — 8–12 reps</strong>
-          <p style={{ margin: "4px 0 0", color: "oklch(0.63 0.006 250)" }}>Bodyweight only. Use assisted dips if necessary.</p>
+          <p style={{ margin: "4px 0 0", color: "rgba(255,255,255,0.63)" }}>Bodyweight only. Use assisted dips if necessary.</p>
         </div>
-        <div style={{ textAlign: "center", color: "oklch(0.45 0.006 250)" }}>↓</div>
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.45)" }}>↓</div>
         <div>
           <strong>4. Jumping Jacks — 30 reps</strong>
         </div>
-        <div style={{ textAlign: "center", color: "oklch(0.45 0.006 250)" }}>↓</div>
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.45)" }}>↓</div>
         <div>
           <strong>5. Battle Rope — 30 sec</strong>
-          <p style={{ margin: "4px 0 0", color: "oklch(0.63 0.006 250)" }}>Hard but controlled.</p>
+          <p style={{ margin: "4px 0 0", color: "rgba(255,255,255,0.63)" }}>Hard but controlled.</p>
         </div>
-        <div style={{ textAlign: "center", color: "oklch(0.45 0.006 250)" }}>↓</div>
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.45)" }}>↓</div>
         <div>
           <strong>6. Hanging Knee Raise — 8–12 reps</strong>
-          <p style={{ margin: "4px 0 0", color: "oklch(0.63 0.006 250)" }}>ONLY if completely comfortable for your lower back. Otherwise: <strong>Dead Bug — 10/side</strong></p>
+          <p style={{ margin: "4px 0 0", color: "rgba(255,255,255,0.63)" }}>ONLY if completely comfortable for your lower back. Otherwise: <strong>Dead Bug — 10/side</strong></p>
         </div>
-        <div style={{ textAlign: "center", color: "oklch(0.45 0.006 250)" }}>↓</div>
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.45)" }}>↓</div>
         <div>
-          <strong style={{ color: "oklch(0.92 0.25 110)" }}>Rest — 90 sec</strong>
+          <strong style={{ color: "#C6F432" }}>Rest — 90 sec</strong>
         </div>
       </div>
 
-      <hr style={{ border: "none", borderTop: "1px solid oklch(0.27 0.005 250)", margin: "24px 0" }} />
+      <hr style={{ border: "none", borderTop: "1px solid #252526", margin: "24px 0" }} />
 
-      <h3 style={{ fontSize: 16, fontWeight: 700, color: "oklch(0.96 0.002 250)", textTransform: "uppercase" }}>4. HIIT RUN</h3>
-      <p style={{ color: "oklch(0.63 0.006 250)", margin: "8px 0" }}>Treadmill / Track</p>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF", textTransform: "uppercase" }}>4. HIIT RUN</h3>
+      <p style={{ color: "rgba(255,255,255,0.63)", margin: "8px 0" }}>Treadmill / Track</p>
       
       <p style={{ fontWeight: 600 }}>Warm-up: 3–5 min easy jog/walk</p>
       
-      <p style={{ fontWeight: 600, color: "oklch(0.63 0.006 250)", margin: "16px 0 8px" }}>6 rounds</p>
+      <p style={{ fontWeight: 600, color: "rgba(255,255,255,0.63)", margin: "16px 0 8px" }}>6 rounds</p>
       <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "12px 0", fontWeight: 600 }}>
         <span>20 sec — hard run</span>
-        <span style={{ color: "oklch(0.45 0.006 250)" }}>↓</span>
+        <span style={{ color: "rgba(255,255,255,0.45)" }}>↓</span>
         <span>100 sec — easy walk</span>
       </div>
 
       <p style={{ fontWeight: 600, marginTop: 16 }}>Cooldown: 5 min easy walking</p>
 
-      <div style={{ padding: "12px 16px", background: "oklch(0.16 0.005 250)", borderRadius: 8, borderLeft: "4px solid oklch(0.92 0.25 110)", margin: "16px 0" }}>
+      <div style={{ padding: "12px 16px", background: "#181819", borderRadius: 8, borderLeft: "4px solid #C6F432", margin: "16px 0" }}>
         <strong>Important:</strong>
         <ul style={{ paddingLeft: 20, margin: "8px 0 0" }}>
           <li>Hard intervals should be ~8/10 effort, not absolute sprint.</li>
@@ -109,27 +109,27 @@ export function HIITInstructions() {
         </ul>
       </div>
 
-      <hr style={{ border: "none", borderTop: "1px solid oklch(0.27 0.005 250)", margin: "24px 0" }} />
+      <hr style={{ border: "none", borderTop: "1px solid #252526", margin: "24px 0" }} />
 
-      <h3 style={{ fontSize: 16, fontWeight: 700, color: "oklch(0.96 0.002 250)", textTransform: "uppercase" }}>5. ABS / CORE FINISHER</h3>
-      <p style={{ fontStyle: "italic", color: "oklch(0.63 0.006 250)", margin: "8px 0" }}>Keep this short.</p>
-      <p style={{ fontWeight: 600, color: "oklch(0.63 0.006 250)", margin: "8px 0" }}>3 rounds</p>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF", textTransform: "uppercase" }}>5. ABS / CORE FINISHER</h3>
+      <p style={{ fontStyle: "italic", color: "rgba(255,255,255,0.63)", margin: "8px 0" }}>Keep this short.</p>
+      <p style={{ fontWeight: 600, color: "rgba(255,255,255,0.63)", margin: "8px 0" }}>3 rounds</p>
       
       <div style={{ display: "flex", flexDirection: "column", gap: 12, margin: "16px 0" }}>
         <div><strong>Pallof Press</strong> — 10–12 / side</div>
-        <div style={{ color: "oklch(0.45 0.006 250)" }}>↓</div>
+        <div style={{ color: "rgba(255,255,255,0.45)" }}>↓</div>
         <div><strong>Dead Bug</strong> — 8–10 / side</div>
-        <div style={{ color: "oklch(0.45 0.006 250)" }}>↓</div>
+        <div style={{ color: "rgba(255,255,255,0.45)" }}>↓</div>
         <div><strong>Plank</strong> — 30–45 sec</div>
-        <div style={{ color: "oklch(0.45 0.006 250)" }}>↓</div>
-        <div><strong style={{ color: "oklch(0.92 0.25 110)" }}>Rest — 45–60 sec</strong></div>
+        <div style={{ color: "rgba(255,255,255,0.45)" }}>↓</div>
+        <div><strong style={{ color: "#C6F432" }}>Rest — 45–60 sec</strong></div>
       </div>
 
-      <hr style={{ border: "none", borderTop: "1px solid oklch(0.27 0.005 250)", margin: "24px 0" }} />
+      <hr style={{ border: "none", borderTop: "1px solid #252526", margin: "24px 0" }} />
 
-      <h3 style={{ fontSize: 16, fontWeight: 700, color: "oklch(0.96 0.002 250)", textTransform: "uppercase" }}>6. OPTIONAL FINISHER</h3>
-      <p style={{ fontStyle: "italic", color: "oklch(0.63 0.006 250)", margin: "8px 0" }}>Only if you still feel fresh.</p>
-      <p style={{ fontWeight: 600, color: "oklch(0.63 0.006 250)", margin: "8px 0" }}>5-MINUTE AMRAP (As many quality rounds as possible)</p>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF", textTransform: "uppercase" }}>6. OPTIONAL FINISHER</h3>
+      <p style={{ fontStyle: "italic", color: "rgba(255,255,255,0.63)", margin: "8px 0" }}>Only if you still feel fresh.</p>
+      <p style={{ fontWeight: 600, color: "rgba(255,255,255,0.63)", margin: "8px 0" }}>5-MINUTE AMRAP (As many quality rounds as possible)</p>
       
       <ul style={{ paddingLeft: 20, margin: "12px 0", fontWeight: 600 }}>
         <li>5 Pull-ups</li>
@@ -137,25 +137,25 @@ export function HIITInstructions() {
         <li>15 Jumping Jacks</li>
         <li>20 sec Battle Rope</li>
       </ul>
-      <p style={{ fontWeight: 600, color: "oklch(0.92 0.25 110)" }}>Do NOT sacrifice technique to increase the number of rounds.</p>
+      <p style={{ fontWeight: 600, color: "#C6F432" }}>Do NOT sacrifice technique to increase the number of rounds.</p>
 
-      <hr style={{ border: "none", borderTop: "1px solid oklch(0.27 0.005 250)", margin: "24px 0" }} />
+      <hr style={{ border: "none", borderTop: "1px solid #252526", margin: "24px 0" }} />
 
-      <h3 style={{ fontSize: 16, fontWeight: 700, color: "oklch(0.96 0.002 250)", textTransform: "uppercase" }}>COMPLETE SATURDAY STRUCTURE</h3>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF", textTransform: "uppercase" }}>COMPLETE SATURDAY STRUCTURE</h3>
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, margin: "16px 0", maxWidth: 300 }}>
-        <div>1. Warm-up</div><div style={{ color: "oklch(0.63 0.006 250)" }}>8 min</div>
-        <div>2. Skipping intervals</div><div style={{ color: "oklch(0.63 0.006 250)" }}>6 min</div>
-        <div>3. Bodyweight conditioning</div><div style={{ color: "oklch(0.63 0.006 250)" }}>~15–20 min</div>
-        <div>4. HIIT running</div><div style={{ color: "oklch(0.63 0.006 250)" }}>~15 min</div>
-        <div>5. Core</div><div style={{ color: "oklch(0.63 0.006 250)" }}>~8 min</div>
-        <div>6. Optional finisher</div><div style={{ color: "oklch(0.63 0.006 250)" }}>5 min</div>
+        <div>1. Warm-up</div><div style={{ color: "rgba(255,255,255,0.63)" }}>8 min</div>
+        <div>2. Skipping intervals</div><div style={{ color: "rgba(255,255,255,0.63)" }}>6 min</div>
+        <div>3. Bodyweight conditioning</div><div style={{ color: "rgba(255,255,255,0.63)" }}>~15–20 min</div>
+        <div>4. HIIT running</div><div style={{ color: "rgba(255,255,255,0.63)" }}>~15 min</div>
+        <div>5. Core</div><div style={{ color: "rgba(255,255,255,0.63)" }}>~8 min</div>
+        <div>6. Optional finisher</div><div style={{ color: "rgba(255,255,255,0.63)" }}>5 min</div>
       </div>
       <p style={{ fontWeight: 700, margin: "16px 0" }}>Total: ~45–60 minutes</p>
 
-      <hr style={{ border: "none", borderTop: "1px solid oklch(0.27 0.005 250)", margin: "24px 0" }} />
+      <hr style={{ border: "none", borderTop: "1px solid #252526", margin: "24px 0" }} />
 
-      <h3 style={{ fontSize: 16, fontWeight: 700, color: "oklch(0.96 0.002 250)", textTransform: "uppercase" }}>SATURDAY INTENSITY RULE</h3>
-      <p style={{ fontWeight: 600, color: "oklch(0.92 0.25 110)", margin: "8px 0" }}>This is NOT another bodybuilding workout.</p>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF", textTransform: "uppercase" }}>SATURDAY INTENSITY RULE</h3>
+      <p style={{ fontWeight: 600, color: "#C6F432", margin: "8px 0" }}>This is NOT another bodybuilding workout.</p>
       <p style={{ margin: "8px 0" }}>The goal is:</p>
       <ul style={{ paddingLeft: 20, margin: "8px 0" }}>
         <li>Move fast</li>

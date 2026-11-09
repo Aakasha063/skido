@@ -1852,6 +1852,36 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_session_summaries: {
+        Args: { p_limit?: number }
+        Returns: {
+          id: string
+          day_id: string | null
+          title: string | null
+          session_date: string
+          status: string
+          started_at: string
+          finished_at: string | null
+          duration_seconds: number | null
+          mood: string | null
+          energy: number | null
+          difficulty: number | null
+          working_sets: number
+          volume: number
+          pr_count: number
+        }[]
+      }
+      get_strength_history: {
+        Args: never
+        Returns: {
+          exercise_id: string
+          exercise_name: string
+          session_date: string
+          best_e1rm: number
+          best_weight: number
+          best_reps: number
+        }[]
+      }
       start_workout_session: {
         Args: { p_day_id: string; p_session_date: string; p_title: string }
         Returns: Json

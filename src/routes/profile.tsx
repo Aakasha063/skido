@@ -1,1094 +1,520 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
-import { AppShell } from "@/components/AppShell";
-import { useAuth } from "@/lib/auth";
+import { AppShell, signOut } from "@/components/AppShell";
 import {
-  fetchAllSets,
-  fetchHistory,
-  fetchLeaderboard,
-  fetchPRs,
-  fetchProfile,
-  saveProfile,
-  uploadAvatar,
-} from "@/lib/api";
-import { supabase } from "@/integrations/supabase/client";
-import { ironScore, levelFor, getInitials, AVATAR_SWATCHES } from "@/lib/gamification";
-import { BadgeTile, ChallengeRow, BottomSheet } from "@/components/Achievements";
+  Avatar,
+  BadgeGrid,
+  Chevron,
+  Field,
+  Icon,
+  LINE,
+  MUTED,
+  ProgressBar,
+  SectionTitle,
+  SelectField,
+  Sheet,
+} from "@/components/sk/ui";
+import { useAuth } from "@/lib/auth";
+import { saveProfile, uploadAvatar } from "@/lib/api";
+import {
+  displayName,
+  goalLabel,
+  useHistory,
+  useLeaderboard,
+  usePlanDays,
+  useProfile,
+  useTemplate,
+} from "@/lib/hooks";
+import { badgesFor, challengesFor, streakDays, weekStartISO } from "@/lib/skido";
+import { buildWeekStatus } from "@/lib/weekStatus";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
     meta: [
-      { title: "Profile & Leaderboard — Skido" },
+      { title: "Profile — Skido" },
       {
         name: "description",
-        content:
-          "Your lifting identity: Iron Score, level, streaks, badges and how you rank against other Skido athletes.",
+        content: "Your Iron score, level, achievements, weekly challenges and account settings.",
       },
-      { property: "og:title", content: "Profile & Leaderboard — Skido" },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: () => (
-    <AppShell>
+    <AppShell tab="profile">
       <ProfilePage />
     </AppShell>
   ),
 });
 
-function currentStreak(dates: string[]) {
-  const set = new Set(dates);
-  let streak = 0;
-  const cursor = new Date();
-  if (!set.has(cursor.toISOString().slice(0, 10))) cursor.setDate(cursor.getDate() - 1);
-  while (set.has(cursor.toISOString().slice(0, 10))) {
-    streak += 1;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return streak;
-}
+const SWATCHES = [
+  { name: "Lime", color: "#C6F432" },
+  { name: "White", color: "#FFFFFF" },
+  { name: "Silver", color: "#D4D4D4" },
+  { name: "Grey", color: "#A1A1A1" },
+  { name: "Graphite", color: "#6E6E70" },
+];
+const GOAL_OPTIONS = ["Fat loss", "Recomp", "Muscle gain", "Strength"];
 
 function ProfilePage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const router = useRouter();
-  const [editingProfile, setEditingProfile] = useState(false);
+  const { data: profile } = useProfile();
+  const { data: history } = useHistory();
+  const { days, hasCustom } = usePlanDays();
+  const { data: template } = useTemplate();
+  const board = useLeaderboard();
+  const [sheet, setSheet] = useState<null | "profile" | "avatar">(null);
   const [nameField, setNameField] = useState("");
   const [goalField, setGoalField] = useState("Fat loss");
-  const [avatarEditorOpen, setAvatarEditorOpen] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isRemoving, setIsRemoving] = useState(false);
-  const [isSigningOut, setIsSigningOut] = useState(false);
-  const [badgesExpanded, setBadgesExpanded] = useState(false);
-  const [challengesExpanded, setChallengesExpanded] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const { data: profile } = useQuery({
-    queryKey: ["profile", user?.id],
-    queryFn: () => fetchProfile(user!.id),
-    enabled: !!user,
-  });
-  const { data: board } = useQuery({
-    queryKey: ["leaderboard", 30],
-    queryFn: () => fetchLeaderboard(30),
-    enabled: !!user,
-  });
-  const { data: history } = useQuery({
-    queryKey: ["history", user?.id],
-    queryFn: () => fetchHistory(user!.id),
-    enabled: !!user,
-  });
-  const { data: prs } = useQuery({
-    queryKey: ["prs", user?.id],
-    queryFn: () => fetchPRs(user!.id),
-    enabled: !!user,
-  });
-  const { data: allSets } = useQuery({
-    queryKey: ["all-sets", user?.id],
-    queryFn: () => fetchAllSets(user!.id),
-    enabled: !!user,
-  });
-
-  useEffect(() => {
-    if (profile) {
-      setNameField(profile.name ?? "");
-      setGoalField(profile.primary_goal ?? "Fat loss");
-    }
-  }, [profile]);
-
-  const saveMutation = useMutation({
-    mutationFn: () =>
-      saveProfile(user!.id, {
-        name: nameField.trim() || null,
-        primary_goal: goalField || null,
-        training_experience: null,
-      }),
-    onSuccess: () => {
-      toast.success("Profile updated");
-      setEditingProfile(false);
-      qc.invalidateQueries({ queryKey: ["profile"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const ranked = useMemo(() => {
-    return (board ?? [])
-      .map((r) => ({ ...r, score: ironScore(r) }))
-      .sort((a, b) => b.score - a.score);
-  }, [board]);
-
-  const me = ranked.find((r) => r.user_id === user?.id);
-  const meIdx = me ? ranked.indexOf(me) : -1;
-  const rankDistanceLabel =
-    meIdx === -1
-      ? "Complete a session to join the leaderboard."
-      : meIdx === 0
-        ? "You're #1 — leading the board."
-        : `${ranked[meIdx - 1]!.score - ranked[meIdx]!.score} pts behind #${meIdx} · ${ranked[meIdx - 1]!.display_name}`;
-  const level = levelFor(me?.score ?? 0);
+  const name = displayName(profile, user?.email);
   const completed = (history ?? []).filter((s) => s.status === "completed");
-  const streak = useMemo(() => currentStreak(completed.map((s) => s.session_date)), [history]);
-  const lifetimeVolume = (allSets ?? []).reduce(
-    (sum, s) => sum + (s.weight_kg ?? 0) * (s.reps ?? 0),
-    0,
-  );
+  const totalSets = completed.reduce((a, s) => a + s.working_sets, 0);
+  const prCount = completed.reduce((a, s) => a + s.pr_count, 0);
+  const streak = streakDays(completed.map((s) => s.session_date));
+  const month = new Date().toISOString().slice(0, 7);
+  const prsThisMonth = completed
+    .filter((s) => s.session_date.startsWith(month))
+    .reduce((a, s) => a + s.pr_count, 0);
+  const weekStart = weekStartISO();
+  const setsThisWeek = completed
+    .filter((s) => s.session_date >= weekStart)
+    .reduce((a, s) => a + s.working_sets, 0);
+  const week = buildWeekStatus(history ?? [], profile?.created_at?.slice(0, 10) ?? "");
+  const mandatory = days.filter((d) => !d.is_optional && !d.is_rest);
+  const weekDone = mandatory.filter((d) => week.statusFor(d).isDone).length;
 
-  const displayName = profile?.name?.trim() || user?.email?.split("@")[0] || "Athlete";
-  const initials = getInitials(displayName);
-  const xpValue = me?.score ?? 0;
-  const toNext = level.next
-    ? `${level.next.min - xpValue} pts to ${level.next.name}`
-    : "Max level — Iron Legend.";
+  const badges = badgesFor({ sessions: completed.length, streakDays: streak, prCount, totalSets });
+  const challenges = challengesFor({
+    weekDone,
+    weekTarget: mandatory.length || 5,
+    prsThisMonth,
+    setsThisWeek,
+  });
+  const { level, myScore, myRank, ranked } = board;
+  const above = myRank > 1 ? ranked[myRank - 2] : null;
+  const planName = hasCustom ? "Custom plan" : (template?.name ?? "—");
 
-  const thisWeekStart = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 6);
-    return d.toISOString().slice(0, 10);
-  })();
-  const thisWeekSessions = completed.filter((s) => s.session_date >= thisWeekStart).length;
+  async function save(patch: Parameters<typeof saveProfile>[1], success?: string) {
+    if (!user) return;
+    setBusy(true);
+    try {
+      await saveProfile(user.id, patch);
+      await qc.invalidateQueries({ queryKey: ["profile"] });
+      if (success) toast.success(success);
+      return true;
+    } catch (e) {
+      toast.error((e as Error).message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  // Badge definitions matching design reference
-  const badges = [
-    {
-      label: "First rep",
-      hint: "Complete 1 session",
-      earned: completed.length >= 1,
-      pct: Math.min(100, completed.length * 100),
-      progressLabel: `${Math.min(completed.length, 1)}/1`,
-      rewardXp: 50,
-    },
-    {
-      label: "Ten sessions",
-      hint: "Complete 10 sessions",
-      earned: completed.length >= 10,
-      pct: Math.min(100, Math.round((completed.length / 10) * 100)),
-      progressLabel: `${Math.min(completed.length, 10)}/10`,
-      rewardXp: 200,
-    },
-    {
-      label: "Consistency",
-      hint: "3-day training streak",
-      earned: streak >= 3,
-      pct: Math.min(100, Math.round((streak / 3) * 100)),
-      progressLabel: `${Math.min(streak, 3)}/3 days`,
-      rewardXp: 100,
-    },
-    {
-      label: "Record breaker",
-      hint: "Set a personal record",
-      earned: (prs?.length ?? 0) >= 1,
-      pct: Math.min(100, (prs?.length ?? 0) * 100),
-      progressLabel: `${Math.min(prs?.length ?? 0, 1)}/1 PR`,
-      rewardXp: 150,
-    },
-    {
-      label: "100 tonnes",
-      hint: "Lift 100,000 kg total",
-      earned: lifetimeVolume >= 100000,
-      pct: Math.min(100, Math.round(lifetimeVolume / 1000)),
-      progressLabel: `${Math.round(lifetimeVolume / 1000)}t`,
-      rewardXp: 500,
-    },
-    {
-      label: "Iron addict",
-      hint: "Log 500 working sets",
-      earned: (allSets?.length ?? 0) >= 500,
-      pct: Math.min(100, Math.round((allSets?.length ?? 0) / 5)),
-      progressLabel: `${Math.min(allSets?.length ?? 0, 500)}/500`,
-      rewardXp: 400,
-    },
-  ];
-
-  const challenges = [
-    {
-      label: "Weekly warrior",
-      hint: "Complete 5 sessions this week",
-      pct: Math.min(100, Math.round((thisWeekSessions / 5) * 100)),
-      progressLabel: `${thisWeekSessions}/5 this week`,
-      rewardXp: 100,
-    },
-    {
-      label: "PR machine",
-      hint: "Set 5 PRs in 30 days",
-      pct: Math.min(100, Math.round(((prs?.length ?? 0) / 5) * 100)),
-      progressLabel: `${Math.min(prs?.length ?? 0, 5)}/5 PRs`,
-      rewardXp: 250,
-    },
-    {
-      label: "Volume king",
-      hint: "Lift 50,000 kg in a month",
-      pct: Math.min(100, Math.round(lifetimeVolume / 500)),
-      progressLabel: `${Math.round(lifetimeVolume / 1000)}t`,
-      rewardXp: 300,
-    },
-  ];
-
-  const milestonePct = level.pct;
-  const milestoneLabel = level.next ? `Reach ${level.next.name}` : "Iron Legend — Max level";
-  const milestoneReward = level.next ? Math.round((level.next.min - level.current.min) * 0.1) : 0;
-
-  const VISIBLE_BADGES = 4;
-  const visibleBadges = badges.slice(0, VISIBLE_BADGES);
-  const hasMoreBadges = badges.length > VISIBLE_BADGES;
-
-  const VISIBLE_CHALLENGES = 2;
-  const visibleChallenges = challenges.slice(0, VISIBLE_CHALLENGES);
-  const hasMoreChallenges = challenges.length > VISIBLE_CHALLENGES;
-
-  const CARD = {
-    background: "oklch(0.11 0.004 250)",
-    border: "1px solid oklch(0.27 0.005 250)",
-    borderRadius: 12,
-  };
-  const BTN_OUTLINE = {
-    height: 32,
-    padding: "0 12px",
-    borderRadius: 8,
-    border: "1px solid oklch(0.27 0.005 250)",
-    background: "transparent",
-    color: "inherit",
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: "pointer",
-  } as const;
-
-  const avatarImage = profile?.avatar_url || null;
-  const avatarColor = profile?.avatar_color || "oklch(0.92 0.25 110)";
-
-  async function handleAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file || !user) return;
-
-    setIsUploading(true);
+    setBusy(true);
     try {
       const publicUrl = await uploadAvatar(user.id, file);
       await saveProfile(user.id, { avatar_url: publicUrl, avatar_color: null });
-      qc.invalidateQueries({ queryKey: ["profile"] });
+      await qc.invalidateQueries({ queryKey: ["profile"] });
       toast.success("Profile photo updated");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to upload photo");
+    } catch (err) {
+      toast.error((err as Error).message || "Failed to upload photo");
     } finally {
-      setIsUploading(false);
-    }
-  }
-
-  async function updateAvatarColor(color: string) {
-    if (!user) return;
-    try {
-      await saveProfile(user.id, { avatar_color: color, avatar_url: null });
-      qc.invalidateQueries({ queryKey: ["profile"] });
-    } catch (err: any) {
-      toast.error("Failed to update avatar color");
-    }
-  }
-
-  async function removePhoto() {
-    if (!user) return;
-    setIsRemoving(true);
-    try {
-      await saveProfile(user.id, { avatar_url: null });
-      qc.invalidateQueries({ queryKey: ["profile"] });
-      toast.success("Profile photo removed");
-    } catch (err: any) {
-      toast.error("Failed to remove photo");
-    } finally {
-      setIsRemoving(false);
-    }
-  }
-
-  async function handleSignOut() {
-    setIsSigningOut(true);
-    try {
-      await supabase.auth.signOut();
-      router.navigate({ to: "/auth" });
-    } finally {
-      setIsSigningOut(false);
+      setBusy(false);
     }
   }
 
   return (
-    <div className="page-enter" style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-      {/* Profile card */}
-      <div style={{ ...CARD, overflow: "hidden" }}>
-        {/* Avatar + info */}
+    <>
+      <section
+        className="sk-fade"
+        style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}
+      >
+        <button
+          type="button"
+          onClick={() => setSheet("avatar")}
+          aria-label="Change profile picture"
+          style={{
+            position: "relative",
+            padding: 0,
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          <Avatar
+            name={name}
+            image={profile?.avatar_url}
+            color={profile?.avatar_color}
+            size={68}
+            radius={22}
+            fontSize={22}
+          />
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              right: -4,
+              bottom: -4,
+              width: 24,
+              height: 24,
+              borderRadius: 999,
+              background: "#252526",
+              border: "2px solid #0B0B0C",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "rgba(255,255,255,0.88)",
+            }}
+          >
+            <Icon name="edit" size={11} stroke={2.4} />
+          </span>
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: "-0.025em" }}>
+            {name}
+          </h1>
+          <p
+            style={{
+              margin: "3px 0 0",
+              fontSize: 13,
+              color: MUTED,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {user?.email}
+          </p>
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            {goalLabel(profile?.primary_goal) && (
+              <span className="sk-pill">{goalLabel(profile?.primary_goal)}</span>
+            )}
+            <span className="sk-pill is-accent">{level.current.name}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="sk-icon-btn sk-text-pill"
+          onClick={() => {
+            setNameField(profile?.name ?? "");
+            setGoalField(goalLabel(profile?.primary_goal) ?? "Fat loss");
+            setSheet("profile");
+          }}
+        >
+          Edit
+        </button>
+      </section>
+
+      <section
+        className="sk-fade sk-surface"
+        style={{ borderRadius: 24, padding: "20px 22px", marginBottom: 16, animationDelay: ".05s" }}
+      >
         <div
           style={{
             display: "flex",
-            flexWrap: "wrap",
-            alignItems: "flex-end",
-            gap: 16,
-            padding: 20,
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            gap: 10,
           }}
         >
-          <div style={{ position: "relative", flexShrink: 0 }}>
-            {/* Avatar */}
-            <button
-              onClick={() => setAvatarEditorOpen(true)}
-              aria-label="Edit avatar"
+          <p className="sk-cap" style={{ margin: 0 }}>
+            Level {level.index} · {level.current.name}
+          </p>
+          <span className="sk-num sk-cap" style={{ letterSpacing: 0 }}>
+            {level.next ? `${level.next.min - myScore} to ${level.next.name}` : "Max level"}
+          </span>
+        </div>
+        <p
+          className="sk-num"
+          style={{ margin: "8px 0 14px", fontSize: 36, fontWeight: 400, lineHeight: 1 }}
+        >
+          {myScore}
+          <span
+            style={{
+              fontSize: 14,
+              color: "rgba(255,255,255,0.56)",
+              marginLeft: 6,
+              letterSpacing: 0,
+            }}
+          >
+            Iron score
+          </span>
+        </p>
+        <ProgressBar pct={level.pct} />
+        <div className="sk-stat-row" style={{ marginTop: 18, paddingTop: 16, borderTop: LINE }}>
+          {[
+            [String(completed.length), "Sessions"],
+            [String(totalSets), "Sets"],
+            [String(prCount), "Records"],
+            [`${streak} day${streak === 1 ? "" : "s"}`, "Streak"],
+          ].map(([v, l]) => (
+            <div key={l}>
+              <p className="sk-num" style={{ margin: 0, fontSize: 18, fontWeight: 500 }}>
+                {v}
+              </p>
+              <p className="sk-cap" style={{ margin: "2px 0 0" }}>
+                {l}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <Link
+        to="/leaderboard"
+        className="sk-fade sk-surface sk-row-btn"
+        style={{ borderRadius: 20, marginBottom: 28, padding: "16px 18px", animationDelay: ".08s" }}
+      >
+        <span
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 11,
+            background: "rgba(255,255,255,0.05)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Icon name="trophyHandles" size={16} color="#C6F432" />
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 14, fontWeight: 500 }}>
+            Leaderboard{myRank > 0 ? ` · #${myRank}` : ""}
+          </span>
+          <span style={{ display: "block", marginTop: 3, fontSize: 12.5, color: MUTED }}>
+            {myRank === 0
+              ? "Train this month to get ranked"
+              : above
+                ? `${above.score - myScore} points behind ${(above.display_name ?? "the next athlete").split(" ")[0]}`
+                : "You're top of the board"}
+          </span>
+        </span>
+        <Chevron />
+      </Link>
+
+      <SectionTitle
+        title="Achievements"
+        right={
+          <span className="sk-cap">{`${badges.filter((b) => b.earned).length} of ${badges.length}`}</span>
+        }
+        style={{ marginTop: 0 }}
+      />
+      <div className="sk-fade" style={{ marginBottom: 28, animationDelay: ".12s" }}>
+        <BadgeGrid badges={badges} />
+      </div>
+
+      <SectionTitle
+        title="This week's challenges"
+        right={
+          <span className="sk-cap">{`${challenges.filter((c) => c.done).length} of ${challenges.length} complete`}</span>
+        }
+        style={{ marginTop: 0 }}
+      />
+      <div
+        className="sk-fade sk-surface"
+        style={{ borderRadius: 20, overflow: "hidden", marginBottom: 28, animationDelay: ".16s" }}
+      >
+        {challenges.map((c, i) => (
+          <div key={c.label} style={{ padding: "16px 18px", borderTop: i ? LINE : "none" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{c.label}</p>
+              <span className="sk-num sk-cap" style={{ letterSpacing: 0 }}>
+                {c.progressLabel}
+              </span>
+            </div>
+            <p style={{ margin: "3px 0 10px", fontSize: 12.5, color: "rgba(255,255,255,0.56)" }}>
+              {c.hint} · +{c.rewardXp} XP
+            </p>
+            <div
               style={{
-                width: 80,
-                height: 80,
-                borderRadius: 16,
-                background: avatarImage ? undefined : avatarColor,
-                backgroundImage: avatarImage ? `url(${avatarImage})` : undefined,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontFamily: "'Inter'",
-                fontSize: 24,
-                fontWeight: 600,
-                color: "oklch(0.07 0.01 110)",
-                border: "none",
-                cursor: "pointer",
+                height: 3,
+                borderRadius: 999,
+                background: "rgba(255,255,255,0.08)",
                 overflow: "hidden",
               }}
             >
-              {!avatarImage && initials}
-            </button>
-            {/* Edit badge */}
-            <button
-              onClick={() => setAvatarEditorOpen(true)}
-              aria-label="Edit avatar"
-              style={{
-                position: "absolute",
-                bottom: -4,
-                right: -4,
-                width: 26,
-                height: 26,
-                borderRadius: 999,
-                border: "2px solid oklch(0.11 0.004 250)",
-                background: "oklch(0.22 0.005 250)",
-                color: "oklch(0.96 0.002 250)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                padding: 0,
-              }}
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-              </svg>
-            </button>
-          </div>
-
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <h1 style={{ margin: 0, fontFamily: "'Inter'", fontSize: 24, fontWeight: 600 }}>
-              {displayName}
-            </h1>
-            <p style={{ margin: "2px 0 0", fontSize: 14, color: "oklch(0.63 0.006 250)" }}>
-              {user?.email}
-            </p>
-            <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
-              <span
+              <div
                 style={{
-                  borderRadius: 6,
-                  background: "oklch(0.92 0.25 110)",
-                  color: "oklch(0.07 0.01 110)",
-                  padding: "2px 10px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
-              >
-                {level.current.name}
-              </span>
-              <span
-                style={{
-                  borderRadius: 6,
-                  border: "1px solid oklch(0.27 0.005 250)",
-                  padding: "2px 10px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
-              >
-                {goalField}
-              </span>
-            </div>
-          </div>
-
-          <button onClick={() => setEditingProfile((v) => !v)} style={BTN_OUTLINE}>
-            ✎ Edit profile
-          </button>
-        </div>
-
-        {/* Edit form */}
-        {editingProfile && (
-          <div
-            style={{
-              borderTop: "1px solid oklch(0.27 0.005 250)",
-              padding: "16px 20px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 13 }}>Display name</label>
-              <input
-                value={nameField}
-                onChange={(e) => setNameField(e.target.value)}
-                style={{
-                  height: 36,
-                  borderRadius: 8,
-                  border: "1px solid oklch(0.27 0.005 250)",
-                  background: "transparent",
-                  color: "inherit",
-                  padding: "0 10px",
-                  fontSize: 14,
+                  height: "100%",
+                  width: `${c.pct}%`,
+                  borderRadius: 999,
+                  background: c.done
+                    ? "linear-gradient(90deg, rgba(198,244,50,0.25), #C6F432)"
+                    : "linear-gradient(90deg, rgba(198,244,50,0.15), rgba(198,244,50,0.7))",
                 }}
               />
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 13 }}>Primary goal</label>
-              <select
-                value={goalField}
-                onChange={(e) => setGoalField(e.target.value)}
-                style={{
-                  height: 36,
-                  borderRadius: 8,
-                  border: "1px solid oklch(0.27 0.005 250)",
-                  background: "oklch(0.045 0.003 250)",
-                  color: "inherit",
-                  padding: "0 10px",
-                  fontSize: 14,
-                }}
-              >
-                <option value="Fat loss">Fat loss</option>
-                <option value="Recomp">Recomp</option>
-                <option value="Muscle gain">Muscle gain</option>
-                <option value="Strength">Strength</option>
-              </select>
-            </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button
-                onClick={() => setEditingProfile(false)}
-                style={{
-                  height: 32,
-                  padding: "0 14px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "transparent",
-                  color: "oklch(0.63 0.006 250)",
-                  fontSize: 13,
-                  cursor: "pointer",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending}
-                style={{
-                  height: 32,
-                  padding: "0 14px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "oklch(0.92 0.25 110)",
-                  color: "oklch(0.07 0.01 110)",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: saveMutation.isPending ? "wait" : "pointer",
-                  opacity: saveMutation.isPending ? 0.7 : 1,
-                }}
-              >
-                {saveMutation.isPending ? "Saving..." : "Save changes"}
-              </button>
-            </div>
           </div>
-        )}
-
-        {/* XP Bar */}
-        <div style={{ borderTop: "1px solid oklch(0.27 0.005 250)", padding: "12px 20px" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-            }}
-          >
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
-              Level {level.idx + 1} · {level.current.name}{" "}
-              <span style={{ color: "oklch(0.63 0.006 250)", fontWeight: 400 }}>
-                · {xpValue} XP
-              </span>
-            </p>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 12,
-                color: "oklch(0.63 0.006 250)",
-                flexShrink: 0,
-              }}
-            >
-              {toNext}
-            </p>
-          </div>
-          <div
-            style={{
-              marginTop: 8,
-              height: 4,
-              borderRadius: 999,
-              background: "oklch(0.22 0.005 250)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                background: "oklch(0.92 0.25 110)",
-                width: `${level.pct}%`,
-                transition: "width 0.3s",
-              }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Avatar editor modal */}
-      {avatarEditorOpen &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 50,
-              background: "rgba(0,0,0,0.6)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 20,
-              overflowY: "auto",
-            }}
-            onClick={() => setAvatarEditorOpen(false)}
-          >
-            <div
-              style={{
-                width: "100%",
-                maxWidth: 360,
-                maxHeight: "calc(100dvh - 40px)",
-                overflowY: "auto",
-                background: "oklch(0.11 0.004 250)",
-                border: "1px solid oklch(0.27 0.005 250)",
-                borderRadius: 12,
-                padding: 24,
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-              >
-                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>Profile picture</h2>
-                <button
-                  onClick={() => setAvatarEditorOpen(false)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "oklch(0.63 0.006 250)",
-                    cursor: "pointer",
-                    padding: 4,
-                  }}
-                >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  >
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-              <div style={{ marginTop: 20, display: "flex", justifyContent: "center" }}>
-                <div
-                  style={{
-                    width: 80,
-                    height: 80,
-                    borderRadius: 16,
-                    background: avatarImage ? undefined : avatarColor,
-                    backgroundImage: avatarImage ? `url(${avatarImage})` : undefined,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 24,
-                    fontWeight: 600,
-                    color: "oklch(0.07 0.01 110)",
-                  }}
-                >
-                  {!avatarImage && initials}
-                </div>
-              </div>
-              <label
-                style={{
-                  marginTop: 20,
-                  display: "flex",
-                  height: 38,
-                  borderRadius: 8,
-                  border: "1px solid oklch(0.27 0.005 250)",
-                  background: "transparent",
-                  color: isUploading ? "oklch(0.45 0.006 250)" : "inherit",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: isUploading ? "not-allowed" : "pointer",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {isUploading ? "Uploading..." : "Upload photo"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleAvatarFile}
-                  disabled={isUploading}
-                  style={{ display: "none" }}
-                />
-              </label>
-              {avatarImage && (
-                <button
-                  onClick={removePhoto}
-                  disabled={isRemoving}
-                  style={{
-                    marginTop: 10,
-                    width: "100%",
-                    height: 36,
-                    borderRadius: 8,
-                    border: "none",
-                    background: "transparent",
-                    color: "oklch(0.63 0.006 250)",
-                    fontSize: 13,
-                    cursor: isRemoving ? "wait" : "pointer",
-                    opacity: isRemoving ? 0.7 : 1,
-                  }}
-                >
-                  {isRemoving ? "Removing..." : "Remove photo"}
-                </button>
-              )}
-              <p
-                style={{
-                  margin: "20px 0 10px",
-                  fontSize: 12,
-                  color: "oklch(0.45 0.006 250)",
-                  textAlign: "center",
-                }}
-              >
-                or choose a color
-              </p>
-              <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
-                {AVATAR_SWATCHES.map((sw) => (
-                  <button
-                    key={sw.name}
-                    onClick={() => updateAvatarColor(sw.color)}
-                    aria-label={sw.name}
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 999,
-                      background: sw.color,
-                      border: `2px solid ${avatarColor === sw.color && !avatarImage ? "oklch(0.96 0.002 250)" : "transparent"}`,
-                      cursor: "pointer",
-                      padding: 0,
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {/* Next milestone + quick stats */}
-      <div style={{ ...CARD, padding: 14 }}>
-        <div
-          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}
-        >
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>{milestoneLabel}</p>
-          <span
-            style={{ fontSize: 12, fontWeight: 600, color: "oklch(0.92 0.25 110)", flexShrink: 0 }}
-          >
-            +{milestoneReward} XP
-          </span>
-        </div>
-        <div
-          style={{
-            marginTop: 8,
-            height: 4,
-            borderRadius: 999,
-            background: "oklch(0.22 0.005 250)",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              height: "100%",
-              background: "oklch(0.92 0.25 110)",
-              width: `${milestonePct}%`,
-            }}
-          />
-        </div>
-        <div
-          style={{
-            marginTop: 12,
-            paddingTop: 12,
-            borderTop: "1px solid oklch(0.27 0.005 250)",
-            display: "grid",
-            gridTemplateColumns: "repeat(2, 1fr)",
-            gap: 12,
-          }}
-        >
-          <div>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 10.5,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                color: "oklch(0.63 0.006 250)",
-              }}
-            >
-              This week
-            </p>
-            <p
-              style={{
-                margin: "3px 0 0",
-                fontSize: 16,
-                fontWeight: 600,
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {thisWeekSessions}/5
-            </p>
-          </div>
-          <div>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 10.5,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                color: "oklch(0.63 0.006 250)",
-              }}
-            >
-              PRs
-            </p>
-            <p
-              style={{
-                margin: "3px 0 0",
-                fontSize: 16,
-                fontWeight: 600,
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {prs?.length ?? 0}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Navigation tiles: Progress + History */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
-        {[
-          {
-            to: "/progress",
-            title: "Progress",
-            desc: "Charts for volume, strength and bodyweight",
-            icon: (
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              >
-                <polyline points="3,17 9,11 13,15 21,7" />
-              </svg>
-            ),
-          },
-          {
-            to: "/history",
-            title: "History",
-            desc: "Every session, filterable by date",
-            icon: (
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              >
-                <circle cx="12" cy="12" r="9" />
-                <polyline points="12,7 12,12 16,14" />
-              </svg>
-            ),
-          },
-        ].map(({ to, title, desc, icon }) => (
-          <Link key={to} to={to} style={{ textDecoration: "none" }}>
-            <div
-              style={{
-                ...CARD,
-                padding: 16,
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                color: "inherit",
-                transition: "border-color 0.15s",
-              }}
-              onMouseEnter={(e) =>
-                ((e.currentTarget as HTMLDivElement).style.borderColor =
-                  "oklch(0.92 0.25 110 / 50%)")
-              }
-              onMouseLeave={(e) =>
-                ((e.currentTarget as HTMLDivElement).style.borderColor = "oklch(0.27 0.005 250)")
-              }
-            >
-              <span
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 10,
-                  background: "oklch(0.92 0.25 110 / 15%)",
-                  color: "oklch(0.92 0.25 110)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                {icon}
-              </span>
-              <div>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{title}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "oklch(0.63 0.006 250)" }}>
-                  {desc}
-                </p>
-              </div>
-            </div>
-          </Link>
         ))}
       </div>
 
-      {/* Achievements */}
-      <div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0, fontFamily: "'Inter'", fontSize: 15, fontWeight: 600 }}>
-            Achievements
-          </h2>
-          <span style={{ fontSize: 12, color: "oklch(0.63 0.006 250)" }}>
-            {badges.filter((b) => b.earned).length}/{badges.length}
-          </span>
-        </div>
-        <div
-          style={{
-            marginTop: 16,
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "8px 4px",
-          }}
-        >
-          {visibleBadges.map((b) => (
-            <BadgeTile
-              key={b.label}
-              label={b.label}
-              rewardXp={b.rewardXp}
-              pct={b.pct}
-              earned={b.earned}
-            />
-          ))}
-        </div>
-        {hasMoreBadges && (
-          <button
-            onClick={() => setBadgesExpanded(true)}
-            style={{ ...BTN_OUTLINE, marginTop: 12, width: "100%" }}
-          >
-            Show all {badges.length} achievements
-          </button>
-        )}
-      </div>
-
-      {badgesExpanded && (
-        <BottomSheet title="All achievements" onClose={() => setBadgesExpanded(false)}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px 4px" }}>
-            {badges.map((b) => (
-              <BadgeTile
-                key={b.label}
-                label={b.label}
-                hint={b.hint}
-                rewardXp={b.rewardXp}
-                pct={b.pct}
-                earned={b.earned}
-              />
-            ))}
-          </div>
-        </BottomSheet>
-      )}
-
-      {/* Challenges */}
-      <div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0, fontFamily: "'Inter'", fontSize: 15, fontWeight: 600 }}>
-            Challenges
-          </h2>
-          <span style={{ fontSize: 12, color: "oklch(0.63 0.006 250)" }}>
-            {challenges.length} active
-          </span>
-        </div>
-        <div style={{ ...CARD, marginTop: 10, overflow: "hidden" }}>
-          {visibleChallenges.map((c) => (
-            <ChallengeRow
-              key={c.label}
-              label={c.label}
-              progressLabel={c.progressLabel}
-              rewardXp={c.rewardXp}
-              pct={c.pct}
-            />
-          ))}
-        </div>
-        {hasMoreChallenges && (
-          <button
-            onClick={() => setChallengesExpanded(true)}
-            style={{ ...BTN_OUTLINE, marginTop: 12, width: "100%" }}
-          >
-            Show all {challenges.length} challenges
-          </button>
-        )}
-      </div>
-
-      {challengesExpanded && (
-        <BottomSheet title="All challenges" onClose={() => setChallengesExpanded(false)}>
-          <div
-            style={{
-              border: "1px solid oklch(0.27 0.005 250)",
-              borderRadius: 12,
-              overflow: "hidden",
-            }}
-          >
-            {challenges.map((c) => (
-              <ChallengeRow
-                key={c.label}
-                label={c.label}
-                hint={c.hint}
-                progressLabel={c.progressLabel}
-                rewardXp={c.rewardXp}
-                pct={c.pct}
-              />
-            ))}
-          </div>
-        </BottomSheet>
-      )}
-
-      {/* Leaderboard */}
-      <Link to="/leaderboard" style={{ textDecoration: "none" }}>
-        <div
-          style={{
-            ...CARD,
-            padding: 16,
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            color: "inherit",
-            transition: "border-color 0.15s",
-          }}
-          onMouseEnter={(e) =>
-            ((e.currentTarget as HTMLDivElement).style.borderColor = "oklch(0.92 0.25 110 / 50%)")
-          }
-          onMouseLeave={(e) =>
-            ((e.currentTarget as HTMLDivElement).style.borderColor = "oklch(0.27 0.005 250)")
-          }
-        >
-          <span
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              background: "oklch(0.92 0.25 110 / 15%)",
-              color: "oklch(0.92 0.25 110)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z" />
-              <path d="M7 6H4a3 3 0 0 0 3 5M17 6h3a3 3 0 0 1-3 5" />
-            </svg>
-          </span>
-          <div>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Leaderboard</p>
-            <p style={{ margin: "2px 0 0", fontSize: 12, color: "oklch(0.63 0.006 250)" }}>
-              {rankDistanceLabel}
-            </p>
-          </div>
-        </div>
-      </Link>
-
-      {/* Sign out */}
-      <button
-        onClick={handleSignOut}
-        disabled={isSigningOut}
-        style={{
-          alignSelf: "flex-start",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          background: "transparent",
-          border: "1px solid oklch(0.27 0.005 250)",
-          borderRadius: 8,
-          color: "oklch(0.63 0.006 250)",
-          fontSize: 13,
-          cursor: isSigningOut ? "wait" : "pointer",
-          opacity: isSigningOut ? 0.7 : 1,
-          padding: "10px 14px",
-        }}
+      <div
+        className="sk-fade sk-surface"
+        style={{ borderRadius: 20, overflow: "hidden", animationDelay: ".18s" }}
       >
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
+        <Link to="/plan" className="sk-row-btn">
+          <span style={{ flex: 1, fontSize: 14 }}>Training plan</span>
+          <span
+            className="sk-cap"
+            style={{
+              maxWidth: 160,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {planName}
+          </span>
+          <Chevron />
+        </Link>
+        <Link to="/progress" search={{ seg: "body" }} className="sk-row-btn">
+          <span style={{ flex: 1, fontSize: 14 }}>Body &amp; calories</span>
+          <Chevron />
+        </Link>
+        <button
+          type="button"
+          className="sk-row-btn"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await signOut(qc);
+              router.navigate({ to: "/auth" });
+            } catch (e) {
+              toast.error((e as Error).message);
+              setBusy(false);
+            }
+          }}
         >
-          <rect x="3" y="4" width="8" height="16" rx="1" />
-          <line x1="21" y1="12" x2="9" y2="12" />
-          <polyline points="17,7 21,12 17,17" />
-        </svg>
-        {isSigningOut ? "Signing out..." : "Sign out"}
-      </button>
-    </div>
+          <span style={{ flex: 1, fontSize: 14, color: "#FF6B6D" }}>Sign out</span>
+        </button>
+      </div>
+
+      <Sheet
+        open={sheet === "profile"}
+        onClose={() => setSheet(null)}
+        title="Edit profile"
+        text="How you appear on the leaderboard."
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+          <Field
+            label="Display name"
+            value={nameField}
+            onChange={(e) => setNameField(e.target.value)}
+          />
+          <SelectField
+            label="Primary goal"
+            value={goalField}
+            onChange={setGoalField}
+            options={GOAL_OPTIONS.map((g) => ({ value: g, label: g }))}
+          />
+        </div>
+        <button
+          type="button"
+          className="sk-btn sk-btn-light"
+          disabled={busy}
+          onClick={async () => {
+            if (
+              await save(
+                {
+                  name: nameField.trim() || null,
+                  primary_goal: goalField || null,
+                  training_experience: null,
+                },
+                "Profile updated",
+              )
+            )
+              setSheet(null);
+          }}
+        >
+          {busy ? "Saving…" : "Save changes"}
+        </button>
+      </Sheet>
+
+      <Sheet
+        open={sheet === "avatar"}
+        onClose={() => setSheet(null)}
+        title="Profile picture"
+        text="Shown on your profile and the leaderboard."
+      >
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
+          <Avatar
+            name={name}
+            image={profile?.avatar_url}
+            color={profile?.avatar_color}
+            size={88}
+            radius={28}
+            fontSize={28}
+          />
+        </div>
+        <label
+          className="sk-btn sk-btn-quiet"
+          style={{ position: "relative", cursor: busy ? "wait" : "pointer", marginBottom: 10 }}
+        >
+          {busy ? "Uploading…" : "Upload a photo"}
+          <input
+            type="file"
+            accept="image/*"
+            onChange={onAvatarFile}
+            disabled={busy}
+            style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
+          />
+        </label>
+        {profile?.avatar_url && (
+          <button
+            type="button"
+            className="sk-btn"
+            disabled={busy}
+            onClick={() => save({ avatar_url: null }, "Profile photo removed")}
+            style={{
+              background: "transparent",
+              color: "rgba(255,255,255,0.75)",
+              height: 44,
+              marginBottom: 8,
+            }}
+          >
+            Remove photo
+          </button>
+        )}
+        <p className="sk-cap" style={{ margin: "8px 0 10px", textAlign: "center" }}>
+          Or choose a colour
+        </p>
+        <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
+          {SWATCHES.map((sw) => {
+            const on = !profile?.avatar_url && profile?.avatar_color === sw.color;
+            return (
+              <button
+                key={sw.name}
+                type="button"
+                aria-label={sw.name}
+                aria-pressed={on}
+                onClick={() => save({ avatar_color: sw.color, avatar_url: null })}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 999,
+                  cursor: "pointer",
+                  background: sw.color,
+                  border: `2px solid ${on ? "#FFFFFF" : "transparent"}`,
+                  boxShadow: "0 0 0 2px #171718 inset",
+                  transition: "transform .15s",
+                }}
+              />
+            );
+          })}
+        </div>
+      </Sheet>
+    </>
   );
 }

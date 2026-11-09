@@ -11,11 +11,11 @@ interface BodyMapProps {
 }
 
 const LEVEL_COLORS: Record<number, string> = {
-  0: 'oklch(0.2 0.005 250)', // Dark unworked muscle
-  1: 'oklch(0.4 0.08 110)',  // Level 1 low
-  2: 'oklch(0.6 0.15 110)',  // Level 2 medium
-  3: 'oklch(0.78 0.22 110)', // Level 3 high
-  4: 'oklch(0.92 0.25 110)', // Level 4 max
+  0: '#1D1D1E', // Dark unworked muscle
+  1: '#0B0B0C',  // Level 1 low
+  2: '#C6F432',  // Level 2 medium
+  3: '#C6F432', // Level 3 high
+  4: '#C6F432', // Level 4 max
 };
 
 export function BodyMap({
@@ -36,7 +36,7 @@ export function BodyMap({
 
   if (!frontView || !backView) {
     return (
-      <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'oklch(0.5 0.01 250)', fontSize: 13 }}>
+      <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>
         Loading Muscle Model...
       </div>
     );
@@ -64,8 +64,8 @@ export function BodyMap({
             <path
               key={`inert-${slug}-${i}`}
               d={d}
-              fill="oklch(0.15 0.004 250)"
-              stroke="oklch(0.22 0.005 250)"
+              fill="#171718"
+              stroke="#1F1F20"
               strokeWidth="1"
             />
           ))
@@ -83,9 +83,9 @@ export function BodyMap({
 
           let fill = LEVEL_COLORS[level] || LEVEL_COLORS[0];
           if (isSelected) {
-            fill = 'oklch(0.92 0.25 110)'; // Electric lime highlight
+            fill = '#C6F432'; // Electric lime highlight
           } else if (isHovered) {
-            fill = 'oklch(0.78 0.22 110)';
+            fill = '#C6F432';
           }
 
           return musclePaths.map((d: string, i: number) => (
@@ -93,7 +93,7 @@ export function BodyMap({
               key={`muscle-${slug}-${i}`}
               d={d}
               fill={fill}
-              stroke={isHighlighted ? 'oklch(0.95 0.2 110)' : 'oklch(0.28 0.006 250)'}
+              stroke={isHighlighted ? '#C6F432' : '#262627'}
               strokeWidth={isHighlighted ? '1.5' : '0.8'}
               style={{
                 cursor: onSelectMuscle ? 'pointer' : 'default',
@@ -119,8 +119,8 @@ export function BodyMap({
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        background: 'oklch(0.08 0.004 250)',
-        border: '1px solid oklch(0.2 0.005 250)',
+        background: '#0F0F10',
+        border: '1px solid #1D1D1E',
         borderRadius: 12,
         padding: '12px 10px',
         width: '100%',
@@ -144,8 +144,8 @@ export function BodyMap({
               style={{
                 fontSize: 12,
                 fontWeight: 700,
-                color: 'oklch(0.92 0.25 110)',
-                background: 'oklch(0.92 0.25 110 / 15%)',
+                color: '#C6F432',
+                background: 'rgba(198,244,50,0.15)',
                 padding: '2px 8px',
                 borderRadius: 6,
                 display: 'inline-block',
@@ -158,7 +158,7 @@ export function BodyMap({
               {MUSCLE_DISPLAY_NAMES[activeMuscle]}
             </span>
           ) : (
-            <span style={{ fontSize: 11, color: 'oklch(0.55 0.01 250)' }}>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>
               {onSelectMuscle ? 'Tap a muscle to filter' : 'Muscle Workload'}
             </span>
           )}
@@ -179,8 +179,8 @@ export function BodyMap({
                   padding: '2px 7px',
                   borderRadius: 4,
                   border: 'none',
-                  background: isCurr ? 'oklch(0.92 0.25 110)' : 'oklch(0.16 0.005 250)',
-                  color: isCurr ? 'oklch(0.07 0.01 110)' : 'oklch(0.65 0.01 250)',
+                  background: isCurr ? '#C6F432' : '#181819',
+                  color: isCurr ? '#0E0E0F' : 'rgba(255,255,255,0.65)',
                   cursor: 'pointer',
                 }}
               >
@@ -203,7 +203,7 @@ export function BodyMap({
       >
         {(activeSide === 'both' || activeSide === 'front') && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, maxWidth: maxW }}>
-            <span style={{ fontSize: 9.5, fontWeight: 700, color: 'oklch(0.45 0.006 250)', textTransform: 'uppercase', marginBottom: 2 }}>
+            <span style={{ fontSize: 9.5, fontWeight: 700, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', marginBottom: 2 }}>
               Front
             </span>
             {renderSvgView(frontView, false)}
@@ -212,7 +212,7 @@ export function BodyMap({
 
         {(activeSide === 'both' || activeSide === 'back') && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, maxWidth: maxW }}>
-            <span style={{ fontSize: 9.5, fontWeight: 700, color: 'oklch(0.45 0.006 250)', textTransform: 'uppercase', marginBottom: 2 }}>
+            <span style={{ fontSize: 9.5, fontWeight: 700, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', marginBottom: 2 }}>
               Back
             </span>
             {renderSvgView(backView, true)}

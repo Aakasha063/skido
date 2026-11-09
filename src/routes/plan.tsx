@@ -1,886 +1,582 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import {
-  fetchDays,
-  fetchHistory,
-  fetchProfile,
-  fetchTemplatePreview,
-  fetchWorkoutTemplate,
-  fetchWorkoutTemplates,
-  setActiveTemplate,
-} from "@/lib/api";
+  ACCENT,
+  Chevron,
+  LINE,
+  MUTED,
+  ProgressBar,
+  Seg,
+  Sheet,
+  TabHeader,
+} from "@/components/sk/ui";
 import { useAuth } from "@/lib/auth";
-import { todayISO, DAY_LABELS } from "@/lib/format";
+import { fetchTemplatePreview, fetchWorkoutTemplates, setActiveTemplate } from "@/lib/api";
+import { useHistory, usePlanDays, useProfile, useTemplate, type PlanDay } from "@/lib/hooks";
 import { buildWeekStatus } from "@/lib/weekStatus";
+import { DAY_LABELS } from "@/lib/format";
+import { getSaturdayChoice, setSaturdayChoice } from "@/lib/saturday";
 
 export const Route = createFileRoute("/plan")({
   head: () => ({
     meta: [
-      { title: "Training Plan — V-Taper Block" },
+      { title: "Training Plan — Skido" },
       {
         name: "description",
         content:
-          "The full weekly V-taper and fat-loss training block: Monday to Friday sessions plus optional Saturday specialization.",
+          "Your weekly training plan: every session, the optional Saturday specialisation and your recovery day.",
       },
-      { property: "og:title", content: "Training Plan — V-Taper Block" },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: () => (
-    <AppShell>
+    <AppShell tab="plan">
       <PlanPage />
     </AppShell>
   ),
 });
 
-/** Fallback shown until the assigned template has loaded (or for profiles predating multi-plan support). */
-const FALLBACK_PLAN_INFO = {
-  name: "V-Taper + Fat-Loss",
-  subtitle: "5 mandatory sessions",
-  meta: "Saturday optional · Sunday recovery",
-};
+const optionalLabel = (d: PlanDay) =>
+  (d.focus ?? d.name ?? "").replace(/^Optional (Specialization|Activity): /, "");
 
 function PlanPage() {
   const { user } = useAuth();
+  const { data: profile } = useProfile();
+  const { days, hasCustom, isLoading } = usePlanDays();
+  const { data: template } = useTemplate();
+  const { data: history } = useHistory();
+  const [sheet, setSheet] = useState(false);
+  const [satSlug, setSatSlug] = useState(() => getSaturdayChoice(user?.id));
+
+  const week = buildWeekStatus(history ?? [], profile?.created_at?.slice(0, 10) ?? "");
+  const training = days
+    .filter((d) => !d.is_optional && d.day_of_week !== 0)
+    .sort((a, b) => ((a.day_of_week + 6) % 7) - ((b.day_of_week + 6) % 7));
+  const mandatory = training.filter((d) => !d.is_rest);
+  const optional = days.filter((d) => d.is_optional && d.day_of_week !== 0);
+  const sunday = days.find((d) => d.day_of_week === 0);
+  const weekDone = mandatory.filter((d) => week.statusFor(d).isDone).length;
+  const sat = optional.find((d) => d.slug === satSlug) ?? optional[0];
+
+  const planName = hasCustom ? "Custom Weekly Plan" : (template?.name ?? "Your plan");
+  const planSubtitle = hasCustom ? "Your personal routine" : (template?.description ?? "");
+  const planMeta = [
+    `${mandatory.length} mandatory session${mandatory.length === 1 ? "" : "s"}`,
+    optional.length ? "Saturday optional" : null,
+    sunday ? "Sunday recovery" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <>
+      <TabHeader eyebrow="Week of training" title="Plan" />
+
+      <section
+        className="sk-fade sk-surface"
+        style={{ borderRadius: 24, padding: "20px 22px", marginBottom: 16 }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <p className="sk-eyebrow" style={{ margin: 0 }}>
+              Current plan
+            </p>
+            <h2
+              style={{
+                margin: "8px 0 0",
+                fontSize: 20,
+                fontWeight: 600,
+                letterSpacing: "-0.025em",
+              }}
+            >
+              {planName}
+            </h2>
+            {planSubtitle && (
+              <p
+                style={{
+                  margin: "4px 0 0",
+                  fontSize: 13.5,
+                  lineHeight: 1.45,
+                  color: MUTED,
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                }}
+              >
+                {planSubtitle}
+              </p>
+            )}
+          </div>
+          <button type="button" className="sk-icon-btn sk-text-pill" onClick={() => setSheet(true)}>
+            Change
+          </button>
+        </div>
+        <p className="sk-cap" style={{ margin: "14px 0 0" }}>
+          {planMeta}
+        </p>
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: LINE }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 13,
+              marginBottom: 10,
+            }}
+          >
+            <span>This week</span>
+            <span className="sk-num" style={{ color: MUTED, letterSpacing: 0 }}>
+              {weekDone} of {mandatory.length} done
+            </span>
+          </div>
+          <ProgressBar pct={mandatory.length ? (weekDone / mandatory.length) * 100 : 0} />
+        </div>
+      </section>
+
+      <h2
+        className="sk-fade sk-h-section"
+        style={{ margin: "28px 0 12px", animationDelay: ".05s" }}
+      >
+        Training days
+      </h2>
+      <div
+        className="sk-fade sk-surface"
+        style={{ borderRadius: 20, overflow: "hidden", animationDelay: ".08s" }}
+      >
+        {isLoading && <div className="sk-skel" style={{ height: 240, borderRadius: 0 }} />}
+        {!isLoading && training.length === 0 && (
+          <p style={{ margin: 0, padding: 18, fontSize: 13.5, color: MUTED }}>
+            No training days yet — pick a plan with Change.
+          </p>
+        )}
+        {training.map((d) => (
+          <DayRow key={d.id} day={d} status={week.statusFor(d)} />
+        ))}
+      </div>
+
+      {optional.length > 0 && sat && (
+        <>
+          <h2
+            className="sk-fade sk-h-section"
+            style={{ margin: "28px 0 4px", animationDelay: ".1s" }}
+          >
+            Saturday · optional
+          </h2>
+          <p className="sk-fade sk-cap" style={{ margin: "0 0 12px", animationDelay: ".1s" }}>
+            Pick this week's session
+          </p>
+          <div
+            className="sk-fade sk-surface"
+            style={{ borderRadius: 20, padding: 16, animationDelay: ".12s" }}
+          >
+            {optional.length > 1 && (
+              <div
+                className="sk-chips"
+                style={{ margin: "0 0 4px", padding: 0, overflowX: "auto" }}
+              >
+                <Seg
+                  label="Saturday focus"
+                  options={optional.map((d) => ({ value: d.slug, label: optionalLabel(d) }))}
+                  value={sat.slug}
+                  onChange={(slug) => {
+                    setSatSlug(slug);
+                    setSaturdayChoice(user?.id, slug);
+                  }}
+                  style={{ flex: "1 0 auto" }}
+                />
+              </div>
+            )}
+            <Link
+              to="/workout/$slug"
+              params={{ slug: sat.slug }}
+              className="sk-row-btn"
+              style={{ marginTop: 8, padding: "12px 4px", borderRadius: 12 }}
+            >
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 14, fontWeight: 500 }}>
+                  {optionalLabel(sat)}
+                </span>
+                <span style={{ display: "block", marginTop: 3, fontSize: 12.5, color: MUTED }}>
+                  {[
+                    `${sat.exercise_count} exercise${sat.exercise_count === 1 ? "" : "s"}`,
+                    sat.estimated_minutes_min
+                      ? `${sat.estimated_minutes_min}–${sat.estimated_minutes_max} min`
+                      : null,
+                    sat.cardio_note,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </span>
+              <Chevron />
+            </Link>
+          </div>
+        </>
+      )}
+
+      <div
+        className="sk-fade sk-surface"
+        style={{
+          borderRadius: 20,
+          padding: "16px 18px",
+          marginTop: 16,
+          display: "flex",
+          gap: 14,
+          alignItems: "flex-start",
+          animationDelay: ".14s",
+        }}
+      >
+        <span
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "1px dashed rgba(255,255,255,0.14)",
+            fontSize: 12,
+            fontWeight: 600,
+            color: MUTED,
+          }}
+        >
+          Sun
+        </span>
+        <div>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Complete rest</p>
+          <p style={{ margin: "4px 0 0", fontSize: 12.5, lineHeight: 1.5, color: MUTED }}>
+            {sunday?.cardio_note ??
+              sunday?.notes ??
+              "Easy walking, light mobility, stretching if desired. Sleep and recover fully."}
+          </p>
+        </div>
+      </div>
+
+      <PlansSheet
+        open={sheet}
+        onClose={() => setSheet(false)}
+        activeId={profile?.active_template_id ?? null}
+        hasCustom={hasCustom}
+      />
+    </>
+  );
+}
+
+function DayRow({
+  day,
+  status,
+}: {
+  day: PlanDay;
+  status: ReturnType<ReturnType<typeof buildWeekStatus>["statusFor"]>;
+}) {
+  const st = day.is_rest
+    ? "rest"
+    : status.isDone
+      ? "done"
+      : status.isToday
+        ? "today"
+        : status.isMissed
+          ? "missed"
+          : "upcoming";
+  const look = {
+    done: {
+      label: "Done",
+      color: ACCENT,
+      bg: "rgba(198,244,50,0.12)",
+      ink: ACCENT,
+      border: "1px solid transparent",
+    },
+    today: {
+      label: "Today",
+      color: "#FFFFFF",
+      bg: "#FFFFFF",
+      ink: "#0F0F10",
+      border: "1px solid transparent",
+    },
+    missed: {
+      label: "Missed",
+      color: "#FF6B6D",
+      bg: "transparent",
+      ink: "rgba(255,255,255,0.75)",
+      border: "1px solid rgba(255,255,255,0.12)",
+    },
+    upcoming: {
+      label: "",
+      color: MUTED,
+      bg: "transparent",
+      ink: "rgba(255,255,255,0.75)",
+      border: "1px solid rgba(255,255,255,0.12)",
+    },
+    rest: {
+      label: "Rest",
+      color: MUTED,
+      bg: "transparent",
+      ink: MUTED,
+      border: "1px dashed rgba(255,255,255,0.14)",
+    },
+  }[st];
+  const meta = day.is_rest
+    ? "Recovery"
+    : [
+        `${day.exercise_count} exercise${day.exercise_count === 1 ? "" : "s"}`,
+        day.estimated_minutes_min
+          ? `${day.estimated_minutes_min}–${day.estimated_minutes_max} min`
+          : null,
+        day.cardio_note ? "cardio" : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+  return (
+    <Link
+      to="/workout/$slug"
+      params={{ slug: day.slug }}
+      className="sk-row-btn"
+      style={{ padding: 16 }}
+    >
+      <span
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 12,
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 12,
+          fontWeight: 600,
+          background: look.bg,
+          color: look.ink,
+          border: look.border,
+        }}
+      >
+        {day.day_of_week != null ? DAY_LABELS[day.day_of_week] : (day.name ?? "").slice(0, 3)}
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span
+          style={{
+            display: "block",
+            fontSize: 14,
+            fontWeight: 500,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {day.is_rest ? "Rest day" : (day.focus ?? day.name)}
+        </span>
+        <span style={{ display: "block", marginTop: 3, fontSize: 12.5, color: MUTED }}>{meta}</span>
+      </span>
+      <span style={{ fontSize: 12, fontWeight: 500, color: look.color, whiteSpace: "nowrap" }}>
+        {look.label}
+      </span>
+      <Chevron />
+    </Link>
+  );
+}
+
+function PlansSheet({
+  open,
+  onClose,
+  activeId,
+  hasCustom,
+}: {
+  open: boolean;
+  onClose: () => void;
+  activeId: string | null;
+  hasCustom: boolean;
+}) {
+  const { user } = useAuth();
   const qc = useQueryClient();
-  const { data: profile } = useQuery({
-    queryKey: ["profile", user?.id],
-    queryFn: () => fetchProfile(user!.id),
-    enabled: !!user,
-  });
-  const { data: days } = useQuery({
-    queryKey: ["days", user?.id, profile?.active_template_id],
-    queryFn: () => fetchDays(user?.id, profile?.active_template_id),
-    // Wait for the profile so we never fetch (and flash) every plan's days first.
-    enabled: !user || profile !== undefined,
-  });
-  const { data: history } = useQuery({
-    queryKey: ["history", user?.id],
-    queryFn: () => fetchHistory(user!.id),
-    enabled: !!user,
-  });
-  const { data: template } = useQuery({
-    queryKey: ["workout-template", profile?.active_template_id],
-    queryFn: () => fetchWorkoutTemplate(profile?.active_template_id),
-    enabled: !!profile?.active_template_id,
-  });
-  const { data: allTemplates } = useQuery({
+  const [preview, setPreview] = useState<string | null>(null);
+  const [switching, setSwitching] = useState<string | null>(null);
+  const { data: templates } = useQuery({
     queryKey: ["workout-templates"],
     queryFn: fetchWorkoutTemplates,
+    enabled: open,
   });
-  const [selectedOptSlug, setSelectedOptSlug] = useState<string | null>(null);
-  const [planModalOpen, setPlanModalOpen] = useState(false);
-  const [switching, setSwitching] = useState<string | null>(null);
-  const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
-  const { data: previewDays, isLoading: previewLoading } = useQuery({
-    queryKey: ["template-preview", previewTemplateId],
-    queryFn: () => fetchTemplatePreview(previewTemplateId!),
-    enabled: !!previewTemplateId,
-  });
+  const enrolled = (templates ?? []).find((t) => t.id === activeId);
+  const others = (templates ?? []).filter((t) => t.id !== activeId);
 
-  async function switchTemplate(templateId: string) {
-    if (!user || templateId === profile?.active_template_id) return;
-    setSwitching(templateId);
+  async function switchTo(id: string) {
+    if (!user) return;
+    setSwitching(id);
     try {
-      await setActiveTemplate(user.id, templateId);
-      await qc.invalidateQueries({ queryKey: ["profile", user.id] });
-      await qc.invalidateQueries({ queryKey: ["days", user.id] });
+      await setActiveTemplate(user.id, id);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["profile", user.id] }),
+        qc.invalidateQueries({ queryKey: ["days", user.id] }),
+      ]);
       toast.success("Plan switched");
-      setPlanModalOpen(false);
+      onClose();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to switch plan");
+      toast.error((e as Error).message);
     } finally {
       setSwitching(null);
     }
   }
 
-  const hasCustomPlan = (days ?? []).some((d) => d.is_custom);
-  const activeDays = hasCustomPlan
-    ? (days ?? []).filter((d) => d.is_custom).sort((a, b) => a.day_of_week - b.day_of_week)
-    : (days ?? []).filter((d) => !d.is_custom).sort((a, b) => a.day_of_week - b.day_of_week);
-
-  const mandatory = activeDays.filter((d) => !d.is_optional && d.day_of_week !== 0);
-  const optional = activeDays.filter((d) => d.is_optional && d.day_of_week !== 0);
-  const sunday = activeDays.find((d) => d.day_of_week === 0);
-
-  const planInfo = template
-    ? {
-        name: template.name,
-        subtitle: `${mandatory.length} mandatory session${mandatory.length === 1 ? "" : "s"}`,
-        meta: optional.length > 0 ? "Saturday optional · Sunday recovery" : "",
-      }
-    : FALLBACK_PLAN_INFO;
-
-  const { statusFor, weekStartISO, weekEndISO } = buildWeekStatus(
-    history ?? [],
-    profile?.created_at?.slice(0, 10) ?? "",
-  );
-
-  const completedThisWeek = Math.min(
-    5,
-    (history ?? []).filter(
-      (s) =>
-        s.status === "completed" && s.session_date >= weekStartISO && s.session_date <= weekEndISO,
-    ).length,
-  );
-  const weekPct = Math.round((completedThisWeek / 5) * 100);
-
-  const selectedOpt = optional.find((d) => d.slug === selectedOptSlug) ?? optional[0];
-
-  const todayStr = todayISO();
-  function todaySessionFor(dayId: string) {
-    return (history ?? []).find(
-      (s) => s.day_id === dayId && s.session_date === todayStr && s.status !== "abandoned",
-    );
-  }
-  function buttonLabel(todaySession: ReturnType<typeof todaySessionFor>, fallback: string) {
-    if (todaySession?.status === "completed") return "✓ Completed";
-    if (todaySession?.status === "in_progress") return "Resume";
-    return fallback;
-  }
-
-  const BTN_OUTLINE = {
-    height: 34,
-    borderRadius: 8,
-    border: "1px solid oklch(0.27 0.005 250)",
-    background: "transparent",
-    color: "inherit",
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: "pointer",
-  } as const;
-  const BTN_FILLED = {
-    height: 34,
-    borderRadius: 8,
-    border: "none",
-    background: "oklch(0.92 0.25 110)",
-    color: "oklch(0.07 0.01 110)",
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
-  } as const;
-  const BTN_LOG = {
-    height: 34,
-    borderRadius: 8,
-    border: "1px solid oklch(0.78 0.19 145 / 50%)",
-    background: "transparent",
-    color: "oklch(0.78 0.19 145)",
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: "pointer",
-  } as const;
-
   return (
-    <div className="page-enter" style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 12,
-        }}
-      >
-        <div>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 11,
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "oklch(0.92 0.25 110)",
-            }}
-          >
-            Your plan
-          </p>
-          <h1
-            style={{
-              margin: "4px 0 0",
-              fontSize: 28,
-              fontWeight: 700,
-              letterSpacing: "-0.02em",
-            }}
-          >
-            {hasCustomPlan ? "Custom Weekly Plan" : planInfo.name}
-          </h1>
-          <p style={{ margin: "6px 0 0", fontSize: 14, color: "oklch(0.63 0.006 250)" }}>
-            {hasCustomPlan
-              ? "Your personal routine"
-              : [planInfo.subtitle, planInfo.meta].filter(Boolean).join(" · ")}
-          </p>
-        </div>
-        <button
-          onClick={() => setPlanModalOpen(true)}
-          style={{
-            flexShrink: 0,
-            height: 32,
-            padding: "0 12px",
-            borderRadius: 8,
-            border: "1px solid oklch(0.27 0.005 250)",
-            background: "transparent",
-            color: "inherit",
-            fontSize: 12.5,
-            fontWeight: 500,
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Change plan
-        </button>
-      </div>
-
-      {/* Change plan modal */}
-      {planModalOpen &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 50,
-              background: "rgba(0,0,0,0.6)",
-              display: "flex",
-              alignItems: "flex-end",
-              justifyContent: "center",
-            }}
-            onClick={() => setPlanModalOpen(false)}
-          >
-            <div
-              style={{
-                width: "100%",
-                maxWidth: 480,
-                maxHeight: "80vh",
-                overflowY: "auto",
-                background: "oklch(0.08 0.004 250)",
-                borderTop: "1px solid oklch(0.27 0.005 250)",
-                borderRadius: "16px 16px 0 0",
-                padding: 20,
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 16,
-                }}
-              >
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Training plans</h2>
-                <button
-                  onClick={() => setPlanModalOpen(false)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "oklch(0.63 0.006 250)",
-                    cursor: "pointer",
-                    padding: 4,
-                  }}
-                >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  >
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {(allTemplates ?? []).map((t) => {
-                  const isEnrolled = t.id === profile?.active_template_id;
-                  return (
-                    <div
-                      key={t.id}
-                      style={{
-                        border: `1px solid ${isEnrolled ? "oklch(0.92 0.25 110 / 50%)" : "oklch(0.27 0.005 250)"}`,
-                        borderRadius: 12,
-                        padding: 14,
-                        background: isEnrolled ? "oklch(0.92 0.25 110 / 8%)" : "transparent",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 8,
-                        }}
-                      >
-                        <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{t.name}</p>
-                        {isEnrolled ? (
-                          <span
-                            style={{
-                              flexShrink: 0,
-                              borderRadius: 6,
-                              background: "oklch(0.92 0.25 110)",
-                              color: "oklch(0.07 0.01 110)",
-                              padding: "2px 8px",
-                              fontSize: 11,
-                              fontWeight: 600,
-                            }}
-                          >
-                            Enrolled
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => switchTemplate(t.id)}
-                            disabled={switching === t.id}
-                            style={{
-                              flexShrink: 0,
-                              borderRadius: 6,
-                              border: "1px solid oklch(0.4 0.01 250)",
-                              background: "transparent",
-                              color: "white",
-                              padding: "4px 10px",
-                              fontSize: 11,
-                              fontWeight: 600,
-                              cursor: switching === t.id ? "wait" : "pointer",
-                            }}
-                          >
-                            {switching === t.id ? "Switching…" : "Switch"}
-                          </button>
-                        )}
-                      </div>
-                      {t.description && (
-                        <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "oklch(0.63 0.006 250)", lineHeight: 1.5 }}>
-                          {t.description}
-                        </p>
-                      )}
-                      <button
-                        onClick={() => setPreviewTemplateId(previewTemplateId === t.id ? null : t.id)}
-                        style={{
-                          marginTop: 8,
-                          background: "transparent",
-                          border: "none",
-                          color: "oklch(0.92 0.25 110)",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          padding: 0,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        {previewTemplateId === t.id ? "Hide preview" : "Preview this plan"}
-                        <svg
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          style={{
-                            transform: previewTemplateId === t.id ? "rotate(180deg)" : "none",
-                            transition: "transform 0.15s",
-                          }}
-                        >
-                          <polyline points="6 9 12 15 18 9" />
-                        </svg>
-                      </button>
-
-                      {previewTemplateId === t.id && (
-                        <div
-                          style={{
-                            marginTop: 12,
-                            paddingTop: 12,
-                            borderTop: "1px solid oklch(0.22 0.005 250)",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 10,
-                          }}
-                        >
-                          {previewLoading ? (
-                            <p style={{ margin: 0, fontSize: 12, color: "oklch(0.45 0.006 250)" }}>
-                              Loading…
-                            </p>
-                          ) : (previewDays ?? []).length === 0 ? (
-                            <p style={{ margin: 0, fontSize: 12, color: "oklch(0.45 0.006 250)" }}>
-                              No days found for this plan.
-                            </p>
-                          ) : (
-                            (previewDays ?? []).map((d) => (
-                              <div key={d.id}>
-                                <p
-                                  style={{
-                                    margin: 0,
-                                    fontSize: 12.5,
-                                    fontWeight: 600,
-                                    color: d.is_rest ? "oklch(0.5 0.006 250)" : "inherit",
-                                  }}
-                                >
-                                  {d.day_of_week != null && (
-                                    <span style={{ color: "oklch(0.63 0.006 250)" }}>
-                                      {DAY_LABELS[d.day_of_week]!.toUpperCase()}{" "}
-                                    </span>
-                                  )}
-                                  {d.is_rest ? "Rest day" : (d.focus ?? d.name)}
-                                  {d.is_optional && (
-                                    <span style={{ fontWeight: 400, color: "oklch(0.45 0.006 250)" }}>
-                                      {" "}
-                                      · optional
-                                    </span>
-                                  )}
-                                </p>
-                                {d.exercises.length > 0 && (
-                                  <ul
-                                    style={{
-                                      margin: "4px 0 0",
-                                      paddingLeft: 16,
-                                      fontSize: 12,
-                                      color: "oklch(0.63 0.006 250)",
-                                      lineHeight: 1.7,
-                                    }}
-                                  >
-                                    {d.exercises.map((ex) => (
-                                      <li key={ex.id}>
-                                        {ex.exercises?.name ?? "Exercise"} — {ex.sets} × {ex.rep_range}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                                {d.cardio_note && (
-                                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "oklch(0.5 0.006 250)" }}>
-                                    Cardio: {d.cardio_note}
-                                  </p>
-                                )}
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid oklch(0.27 0.005 250)" }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: "oklch(0.7 0.01 250)", marginBottom: 12 }}>
-                  Custom Plans
-                </div>
-                {days?.find(d => d.is_custom) ? (
-                  <div
-                    style={{
-                      border: "1px solid oklch(0.27 0.005 250)",
-                      borderRadius: 12,
-                      padding: 14,
-                      background: "transparent",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
-                    >
-                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Custom Weekly Plan</p>
-                      <Link to="/builder" onClick={() => setPlanModalOpen(false)} style={{ textDecoration: "none" }}>
-                        <span
-                          style={{
-                            borderRadius: 6,
-                            background: "oklch(0.2 0.01 250)",
-                            color: "white",
-                            padding: "4px 8px",
-                            fontSize: 11,
-                            fontWeight: 600,
-                          }}
-                        >
-                          Edit
-                        </span>
-                      </Link>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <Link to="/builder" onClick={() => setPlanModalOpen(false)} style={{ textDecoration: "none", flex: 1 }}>
-                      <button style={{ ...BTN_OUTLINE, width: "100%", borderColor: "oklch(0.4 0.01 250)", color: "white" }}>
-                        + Build Custom Plan
-                      </button>
-                    </Link>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {/* Week progress */}
-      <div
-        style={{
-          background: "oklch(0.11 0.004 250)",
-          border: "1px solid oklch(0.27 0.005 250)",
-          borderRadius: 12,
-          padding: 20,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 13,
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "oklch(0.63 0.006 250)",
-            }}
-          >
-            This week
-          </p>
-          <p
-            style={{ margin: 0, fontSize: 14, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}
-          >
-            {completedThisWeek}/5 completed
-          </p>
-        </div>
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Training plans"
+      text="Switch programmes when you're ready for a new block."
+    >
+      {enrolled && (
         <div
-          style={{
-            marginTop: 12,
-            height: 6,
-            borderRadius: 999,
-            background: "oklch(0.22 0.005 250)",
-            overflow: "hidden",
-          }}
+          className="sk-surface"
+          style={{ borderRadius: 18, padding: "16px 18px", borderColor: "rgba(198,244,50,0.3)" }}
         >
           <div
             style={{
-              height: "100%",
-              background: "oklch(0.92 0.25 110)",
-              width: `${weekPct}%`,
-              transition: "width 0.3s",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
             }}
+          >
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 500 }}>{enrolled.name}</p>
+            <span className="sk-pill is-accent">
+              {hasCustom ? "Overridden by custom" : "Enrolled"}
+            </span>
+          </div>
+          {enrolled.description && (
+            <p style={{ margin: "4px 0 0", fontSize: 13, lineHeight: 1.5, color: MUTED }}>
+              {enrolled.description}
+            </p>
+          )}
+          <PreviewToggle
+            id={enrolled.id}
+            open={preview === enrolled.id}
+            onToggle={() => setPreview((p) => (p === enrolled.id ? null : enrolled.id))}
           />
         </div>
-      </div>
-
-      {/* Mandatory days */}
-      <div>
-        <h2
-          style={{
-            margin: "0 0 16px",
-            fontSize: 13,
-            fontWeight: 600,
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-            color: "oklch(0.63 0.006 250)",
-          }}
+      )}
+      {others.map((t) => (
+        <div
+          key={t.id}
+          className="sk-surface"
+          style={{ borderRadius: 18, padding: "16px 18px", marginTop: 10 }}
         >
-          Mandatory
-        </h2>
-        <div className="plan-grid">
-          {mandatory.map((d) => {
-            const { isToday, isDone, isMissed, session } = statusFor(d);
-            const accentColor = isToday ? "oklch(0.92 0.25 110)" : "transparent";
-            const dayAbbr = d.day_of_week == null ? "" : DAY_LABELS[d.day_of_week]!.toUpperCase();
-            const chipBg = isToday ? "oklch(0.92 0.25 110)" : "oklch(0.22 0.005 250)";
-            const chipColor = isToday ? "oklch(0.07 0.01 110)" : "oklch(0.96 0.002 250)";
-            const statusLabel = isToday
-              ? "Today"
-              : isDone
-                ? "Completed"
-                : isMissed
-                  ? "Missed"
-                  : "Upcoming";
-            const statusColor = isToday
-              ? "oklch(0.92 0.25 110)"
-              : isDone
-                ? "oklch(0.78 0.19 145)"
-                : isMissed
-                  ? "oklch(0.68 0.2 25)"
-                  : "oklch(0.45 0.006 250)";
-            const exerciseCount = (d as { exercise_count?: number }).exercise_count ?? 0;
-
-            return (
-              <div
-                key={d.id}
-                style={{
-                  background: "oklch(0.11 0.004 250)",
-                  border: "1px solid oklch(0.27 0.005 250)",
-                  borderLeft: `3px solid ${accentColor}`,
-                  borderRadius: 12,
-                  padding: 16,
-                  minHeight: 128,
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 8,
-                    }}
-                  >
-                    <span
-                      style={{
-                        borderRadius: 7,
-                        background: chipBg,
-                        color: chipColor,
-                        padding: "3px 8px",
-                        fontSize: 11,
-                        fontWeight: 700,
-                        letterSpacing: "0.03em",
-                      }}
-                    >
-                      {dayAbbr}
-                    </span>
-                    {!d.is_rest && (
-                      <span style={{ fontSize: 11, fontWeight: 600, color: statusColor }}>
-                        {statusLabel}
-                      </span>
-                    )}
-                  </div>
-                  <p
-                    style={{ margin: "12px 0 0", fontSize: 16, fontWeight: 600, lineHeight: 1.25 }}
-                  >
-                    {d.is_rest ? "Rest day" : d.focus}
-                  </p>
-                  {!d.is_rest && (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        fontSize: 12,
-                        color: "oklch(0.45 0.006 250)",
-                      }}
-                    >
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M6.5 6.5h11v11h-11z" />
-                        <path d="M6.5 9.5h11M9.5 6.5v11" />
-                      </svg>
-                      <span>{exerciseCount} exercises</span>
-                    </div>
-                  )}
-                  {d.cardio_note && (
-                    <p
-                      style={{ margin: "6px 0 0", fontSize: 11.5, color: "oklch(0.45 0.006 250)" }}
-                    >
-                      {d.cardio_note}
-                    </p>
-                  )}
-                </div>
-                {!d.is_rest && (
-                  <div style={{ marginTop: 14 }}>
-                    {isToday ? (
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <Link
-                          to="/workout/$slug"
-                          params={{ slug: d.slug }}
-                          style={{ flex: 1, textDecoration: "none" }}
-                        >
-                          <button style={{ ...BTN_OUTLINE, width: "100%" }}>Open</button>
-                        </Link>
-                        <Link
-                          to="/workout/$slug"
-                          params={{ slug: d.slug }}
-                          search={{ start: true }}
-                          style={{ flex: 1, textDecoration: "none" }}
-                        >
-                          <button style={{ ...BTN_FILLED, width: "100%" }}>
-                            {session?.status === "in_progress" ? "Resume" : "Start"}
-                          </button>
-                        </Link>
-                      </div>
-                    ) : isDone && session ? (
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <Link
-                          to="/workout/$slug"
-                          params={{ slug: d.slug }}
-                          style={{ flex: 1, textDecoration: "none" }}
-                        >
-                          <button style={{ ...BTN_OUTLINE, width: "100%" }}>Open</button>
-                        </Link>
-                        <Link
-                          to="/history/$id"
-                          params={{ id: session.id }}
-                          style={{ flex: 1, textDecoration: "none" }}
-                        >
-                          <button style={{ ...BTN_LOG, width: "100%" }}>View log</button>
-                        </Link>
-                      </div>
-                    ) : (
-                      <Link
-                        to="/workout/$slug"
-                        params={{ slug: d.slug }}
-                        style={{ textDecoration: "none" }}
-                      >
-                        <button style={{ ...BTN_OUTLINE, width: "100%" }}>Open</button>
-                      </Link>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Saturday optional */}
-      {optional.length > 0 && (
-        <div>
-          <h2
-            style={{
-              margin: "0 0 16px",
-              fontSize: 13,
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "oklch(0.63 0.006 250)",
-            }}
-          >
-            Saturday · Optional specialization
-          </h2>
           <div
             style={{
-              background: "oklch(0.11 0.004 250)",
-              border: "1px solid oklch(0.27 0.005 250)",
-              borderRadius: 12,
-              padding: 20,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
             }}
           >
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {optional.map((o) => {
-                const active =
-                  selectedOptSlug === o.slug || (!selectedOptSlug && o.id === optional[0]?.id);
-                return (
-                  <button
-                    key={o.id}
-                    onClick={() => setSelectedOptSlug(o.slug)}
-                    style={{
-                      height: 32,
-                      padding: "0 14px",
-                      borderRadius: 8,
-                      border: "none",
-                      background: active ? "oklch(0.22 0.005 250)" : "transparent",
-                      color: active ? "oklch(0.96 0.002 250)" : "oklch(0.63 0.006 250)",
-                      fontSize: 13,
-                      fontWeight: 500,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {o.focus?.replace("Optional Specialization: ", "")}
-                  </button>
-                );
-              })}
-            </div>
-            {selectedOpt && (
-              <div
-                style={{
-                  marginTop: 20,
-                  paddingTop: 20,
-                  borderTop: "1px solid oklch(0.27 0.005 250)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                }}
-              >
-                <div>
-                  <p style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
-                    Optional Specialization:{" "}
-                    {selectedOpt.focus?.replace("Optional Specialization: ", "")}
-                  </p>
-                  {selectedOpt.cardio_note && (
-                    <p style={{ margin: "4px 0 0", fontSize: 13, color: "oklch(0.63 0.006 250)" }}>
-                      {selectedOpt.cardio_note}
-                    </p>
-                  )}
-                </div>
-                <Link
-                  to="/workout/$slug"
-                  params={{ slug: selectedOpt.slug }}
-                  style={{ textDecoration: "none", flexShrink: 0 }}
-                >
-                  <button
-                    style={{
-                      height: 36,
-                      padding: "0 16px",
-                      borderRadius: 8,
-                      border:
-                        todaySessionFor(selectedOpt.id)?.status === "completed"
-                          ? "1px solid oklch(0.92 0.25 110 / 40%)"
-                          : "1px solid oklch(0.27 0.005 250)",
-                      background: "transparent",
-                      color:
-                        todaySessionFor(selectedOpt.id)?.status === "completed"
-                          ? "oklch(0.92 0.25 110)"
-                          : "inherit",
-                      fontSize: 13,
-                      fontWeight: 500,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {selectedOpt.slug === "saturday-specialization"
-                    ? "Specialize this Saturday"
-                    : `Start ${selectedOpt.name}`}
-                  </button>
-                </Link>
-              </div>
-            )}
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 500 }}>{t.name}</p>
+            <button
+              type="button"
+              className="sk-icon-btn sk-text-pill"
+              disabled={!!switching}
+              onClick={() => switchTo(t.id)}
+            >
+              {switching === t.id ? "Switching…" : "Switch"}
+            </button>
           </div>
+          {t.description && (
+            <p style={{ margin: "4px 0 0", fontSize: 13, lineHeight: 1.5, color: MUTED }}>
+              {t.description}
+            </p>
+          )}
+          <PreviewToggle
+            id={t.id}
+            open={preview === t.id}
+            onToggle={() => setPreview((p) => (p === t.id ? null : t.id))}
+          />
+        </div>
+      ))}
+
+      <h3 className="sk-cap" style={{ margin: "22px 0 10px" }}>
+        Custom plan
+      </h3>
+      <Link to="/builder" className="sk-btn sk-btn-quiet" onClick={onClose}>
+        {hasCustom ? "Edit your custom plan" : "+ Build a custom plan"}
+      </Link>
+    </Sheet>
+  );
+}
+
+function PreviewToggle({
+  id,
+  open,
+  onToggle,
+}: {
+  id: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["template-preview", id],
+    queryFn: () => fetchTemplatePreview(id),
+    enabled: open,
+  });
+  return (
+    <>
+      <button
+        type="button"
+        className="sk-link-btn"
+        onClick={onToggle}
+        aria-expanded={open}
+        style={{ marginTop: 10, fontSize: 12.5 }}
+      >
+        {open ? "Hide preview" : "Preview this plan"}
+      </button>
+      {open && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+          {isLoading && <div className="sk-spinner" />}
+          {!isLoading && (data ?? []).length === 0 && (
+            <p style={{ margin: 0, fontSize: 12.5, color: MUTED }}>No days in this plan yet.</p>
+          )}
+          {(data ?? []).map((d) => (
+            <div key={d.id} style={{ paddingTop: 10, borderTop: LINE }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
+                <span className="sk-cap" style={{ marginRight: 8 }}>
+                  {d.day_of_week != null ? DAY_LABELS[d.day_of_week] : ""}
+                </span>
+                {d.is_rest ? "Rest day" : (d.focus ?? d.name)}
+                {d.is_optional && <span className="sk-cap"> · optional</span>}
+              </p>
+              {d.exercises.length > 0 && (
+                <ul
+                  style={{
+                    margin: "6px 0 0",
+                    padding: 0,
+                    listStyle: "none",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 3,
+                  }}
+                >
+                  {d.exercises.map((we) => (
+                    <li key={we.id} style={{ fontSize: 12.5, color: MUTED }}>
+                      {(we.exercises as { name?: string } | null)?.name ?? "Exercise"} — {we.sets} ×{" "}
+                      {we.rep_range}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {d.cardio_note && (
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
+                  Cardio: {d.cardio_note}
+                </p>
+              )}
+            </div>
+          ))}
         </div>
       )}
-
-      {/* Sunday */}
-      <div>
-        <h2
-          style={{
-            margin: "0 0 16px",
-            fontSize: 13,
-            fontWeight: 600,
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-            color: "oklch(0.63 0.006 250)",
-          }}
-        >
-          Sunday
-        </h2>
-        <div
-          style={{
-            background: "oklch(0.08 0.003 250)",
-            border: "1px dashed oklch(0.27 0.005 250)",
-            borderRadius: 12,
-            padding: 20,
-          }}
-        >
-          <p style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "oklch(0.63 0.006 250)" }}>
-            Complete rest
-          </p>
-          <p style={{ margin: "6px 0 0", fontSize: 13, color: "oklch(0.45 0.006 250)" }}>
-            {sunday?.cardio_note ??
-              "Easy walking, light mobility, stretching if desired. Sleep and recover fully."}
-          </p>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }
