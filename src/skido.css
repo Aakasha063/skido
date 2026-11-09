@@ -1288,3 +1288,90 @@ textarea.sk-field {
 .sk-page.is-wide {
   max-width: 1180px;
 }
+
+/* Swipe gestures: the stage keeps vertical scrolling for the browser and horizontal
+   moves for the card; a dragged card drops its entrance animation so it tracks the finger. */
+.wk-stage {
+  touch-action: pan-y;
+}
+.wk-card.is-dragging {
+  animation: none;
+  cursor: grabbing;
+}
+
+/* Value slider: only the thumb drags (so swipes across the row move the card); tap the track to jump. */
+.sk-slider {
+  position: relative;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.sk-slider-track {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+}
+.sk-slider-thumb {
+  position: absolute;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.35);
+  touch-action: none;
+  cursor: grab;
+  transition:
+    box-shadow 0.2s,
+    transform 0.2s;
+}
+/* A bigger invisible grab area than the 24px dot, for fingers. */
+.sk-slider-thumb::before {
+  content: "";
+  position: absolute;
+  inset: -6px -12px;
+  border-radius: 999px;
+}
+.sk-slider-thumb:hover {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.35),
+    0 0 0 6px rgba(255, 255, 255, 0.06);
+}
+.sk-slider-thumb.is-active {
+  transform: scale(1.08);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.35),
+    0 0 0 9px rgba(255, 255, 255, 0.08);
+  cursor: grabbing;
+}
+.sk-slider-thumb:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px #0b0b0c,
+    0 0 0 5px #ffffff;
+}
+
+/* No horizontal scrolling anywhere: anything that flies or glows past the edge is clipped,
+   never scrollable. `clip` (unlike `hidden`) doesn't turn the element into a scroller. */
+html,
+body {
+  overflow-x: clip;
+}
+.sk-page {
+  overflow-x: clip;
+}
+.wk-layer,
+.wk-done,
+.sk-sheet {
+  overflow-x: hidden;
+}
+.wk-layer {
+  touch-action: pan-y;
+}

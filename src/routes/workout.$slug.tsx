@@ -895,7 +895,9 @@ function WorkoutPage() {
                 items={remaining}
                 getKey={(c) => c.key}
                 onSwipe={handleSwipe}
-                disabled={finishing || !!rest || flipped}
+                disabled={finishing || flipped}
+                // Swiping while the rest timer is up ends the rest and moves the next card.
+                onDragStart={() => setRest(null)}
                 renderCard={(card) => (
                   <SetCard
                     key={card.we.exercise_id}
@@ -1146,7 +1148,7 @@ function RestOverlay({
   }, [left, nextName, onDone]);
 
   return (
-    <div role="timer" aria-label="Rest timer" className="wk-rest">
+    <div role="timer" aria-label="Rest timer" className="wk-rest" data-swipe-surface>
       <span className="sk-eyebrow">Rest</span>
       <div
         style={{

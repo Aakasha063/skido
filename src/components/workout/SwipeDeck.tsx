@@ -21,34 +21,43 @@ type Props<T> = {
   renderCard: (item: T) => ReactNode;
   /** Called the moment a card is released past the threshold — the next card is live immediately. */
   onSwipe: (item: T, dir: SwipeDirection) => void;
+  /** Called when a horizontal drag begins (e.g. to dismiss the rest overlay so the card can move). */
+  onDragStart?: () => void;
   disabled?: boolean;
   /** Rendered above the cards inside the stage (toast, PR sheen, rest overlay). */
   overlay?: ReactNode;
 };
 
 type Exiting<T> = { key: string; item: T; dir: SwipeDirection; x: number; y: number; rot: number };
+type Gesture = {
+  id: number;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  lastX: number;
+  lastT: number;
+  vx: number;
+  /** Becomes true once the movement is clearly horizontal; until then taps behave normally. */
+  active: boolean;
+};
 
 const FLY_MS = 300;
 const THRESHOLD = 110;
-const IGNORE_DRAG_FROM = "input, button, a, select, textarea, label, [data-no-swipe]";
+/** Horizontal travel before a press turns into a swipe — small enough to feel instant, big enough that taps stay taps. */
+const SLOP = 8;
+/** Gestures that must never become a card swipe (slider thumbs, text fields, the technique side's scroller). */
+const NEVER_SWIPE = "input, select, textarea, [data-no-swipe]";
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 function SwipeDeckInner<T>(
-  { items, getKey, renderCard, onSwipe, disabled, overlay }: Props<T>,
+  { items, getKey, renderCard, onSwipe, onDragStart, disabled, overlay }: Props<T>,
   ref: Ref<SwipeDeckHandle>,
 ) {
   const rootRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
-  const drag = useRef<{
-    id: number;
-    x: number;
-    y: number;
-    dx: number;
-    dy: number;
-    lastX: number;
-    lastT: number;
-    vx: number;
-  } | null>(null);
+  const gesture = useRef<Gesture | null>(null);
+  const suppressClickUntil = useRef(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [exiting, setExiting] = useState<Exiting<T>[]>([]);
 
@@ -72,6 +81,7 @@ function SwipeDeckInner<T>(
     if (el) {
       el.style.transform = "";
       el.style.transition = "";
+      el.classList.remove("is-dragging");
     }
     paint(0);
   }, [topKey]);
@@ -103,14 +113,12 @@ function SwipeDeckInner<T>(
   );
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    if (disabled || e.button > 0) return;
-    if ((e.target as HTMLElement).closest(IGNORE_DRAG_FROM)) return;
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // pointer may already be released
-    }
-    drag.current = {
+    if (disabled || top === undefined || e.button > 0 || gesture.current) return;
+    const target = e.target as HTMLElement;
+    // Only presses on the top card or the overlays above it (rest timer) can swipe.
+    if (!target.closest(".wk-card:not(.is-exiting), [data-swipe-surface]")) return;
+    if (target.closest(NEVER_SWIPE)) return;
+    gesture.current = {
       id: e.pointerId,
       x: e.clientX,
       y: e.clientY,
@@ -119,38 +127,71 @@ function SwipeDeckInner<T>(
       lastX: e.clientX,
       lastT: e.timeStamp,
       vx: 0,
+      active: false,
     };
-    rootRef.current?.classList.add("is-dragging");
-    e.currentTarget.style.transition = "none";
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    const d = drag.current;
-    if (!d || d.id !== e.pointerId) return;
-    d.dx = e.clientX - d.x;
-    d.dy = e.clientY - d.y;
-    const dt = e.timeStamp - d.lastT;
-    if (dt > 0) d.vx = 0.7 * ((e.clientX - d.lastX) / dt) + 0.3 * d.vx;
-    d.lastX = e.clientX;
-    d.lastT = e.timeStamp;
-    e.currentTarget.style.transform = `translate(${d.dx}px, ${d.dy * 0.12}px) rotate(${d.dx / 32}deg)`;
-    paint(d.dx);
+    const g = gesture.current;
+    if (!g || g.id !== e.pointerId) return;
+    g.dx = e.clientX - g.x;
+    g.dy = e.clientY - g.y;
+    const dt = e.timeStamp - g.lastT;
+    if (dt > 0) g.vx = 0.7 * ((e.clientX - g.lastX) / dt) + 0.3 * g.vx;
+    g.lastX = e.clientX;
+    g.lastT = e.timeStamp;
+
+    if (!g.active) {
+      const ax = Math.abs(g.dx);
+      const ay = Math.abs(g.dy);
+      if (ay > SLOP && ay > ax) {
+        // A vertical gesture: leave it to the page (scrolling).
+        gesture.current = null;
+        return;
+      }
+      if (ax < SLOP || ax < ay) return;
+      // Clearly horizontal: from here on this press is a card swipe, wherever it started.
+      g.active = true;
+      try {
+        rootRef.current?.setPointerCapture(e.pointerId);
+      } catch {
+        // pointer already gone
+      }
+      onDragStart?.();
+      rootRef.current?.classList.add("is-dragging");
+      const el = topRef.current;
+      if (el) {
+        el.classList.add("is-dragging");
+        el.style.transition = "none";
+      }
+    }
+
+    const el = topRef.current;
+    if (el) el.style.transform = `translate(${g.dx}px, ${g.dy * 0.12}px) rotate(${g.dx / 32}deg)`;
+    paint(g.dx);
   }
 
-  function endDrag(e: React.PointerEvent<HTMLDivElement>, cancelled: boolean) {
-    const d = drag.current;
-    if (!d || d.id !== e.pointerId) return;
-    drag.current = null;
+  function onPointerEnd(e: React.PointerEvent<HTMLDivElement>, cancelled: boolean) {
+    const g = gesture.current;
+    if (!g || g.id !== e.pointerId) return;
+    gesture.current = null;
+    if (!g.active) return; // a tap: let the button / slider / overlay handle it normally
+
+    // The press was a swipe, so the click that may follow must not press a button.
+    suppressClickUntil.current = performance.now() + 400;
     rootRef.current?.classList.remove("is-dragging");
-    const el = e.currentTarget;
-    el.style.transition = "";
+    const el = topRef.current;
+    if (el) {
+      el.classList.remove("is-dragging");
+      el.style.transition = "";
+    }
     const flung =
-      Math.abs(d.vx) > 0.6 && Math.abs(d.dx) > 40 && Math.sign(d.vx) === Math.sign(d.dx);
-    if (!cancelled && (Math.abs(d.dx) > THRESHOLD || flung)) {
-      commit(d.dx > 0 ? "right" : "left", { x: d.dx, y: d.dy * 0.12, rot: d.dx / 32 });
+      Math.abs(g.vx) > 0.6 && Math.abs(g.dx) > 40 && Math.sign(g.vx) === Math.sign(g.dx);
+    if (!cancelled && (Math.abs(g.dx) > THRESHOLD || flung)) {
+      commit(g.dx > 0 ? "right" : "left", { x: g.dx, y: g.dy * 0.12, rot: g.dx / 32 });
       return;
     }
-    el.style.transform = "";
+    if (el) el.style.transform = "";
     paint(0);
   }
 
@@ -162,7 +203,20 @@ function SwipeDeckInner<T>(
   ];
 
   return (
-    <div ref={rootRef} className="wk-stage">
+    <div
+      ref={rootRef}
+      className="wk-stage"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={(e) => onPointerEnd(e, false)}
+      onPointerCancel={(e) => onPointerEnd(e, true)}
+      onClickCapture={(e) => {
+        if (performance.now() < suppressClickUntil.current) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }}
+    >
       <div className="wk-glow is-log" aria-hidden="true" />
       <div className="wk-glow is-skip" aria-hidden="true" />
       {Array.from({ length: plates }, (_, i) => (
@@ -193,10 +247,6 @@ function SwipeDeckInner<T>(
             data-dir={exit?.dir}
             style={style}
             aria-hidden={!isTop || undefined}
-            onPointerDown={isTop ? onPointerDown : undefined}
-            onPointerMove={isTop ? onPointerMove : undefined}
-            onPointerUp={isTop ? (e) => endDrag(e, false) : undefined}
-            onPointerCancel={isTop ? (e) => endDrag(e, true) : undefined}
           >
             {renderCard(item)}
           </div>

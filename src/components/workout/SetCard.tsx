@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { ACCENT, Icon } from "@/components/sk/ui";
 import type { WorkoutExercise } from "@/lib/api";
 import { suggestNextSet } from "@/lib/progression";
@@ -200,16 +200,13 @@ export function SetCard({
               plusLabel="One minute more"
               big
             />
-            <input
-              className="sk-rng"
-              type="range"
-              min={0}
+            <Slider
+              value={r}
               max={Math.max(60, r)}
               step={1}
-              value={r}
-              onChange={(e) => setR(Number(e.target.value))}
-              aria-label="Duration in minutes"
-              style={{ background: track((r / Math.max(60, r)) * 100) }}
+              onChange={setR}
+              label="Duration in minutes"
+              valueText={`${r} minutes`}
             />
             <p style={{ margin: "18px 0 0", fontSize: 12.5, color: "rgba(255,255,255,0.56)" }}>
               Log the minutes you actually did.
@@ -416,17 +413,13 @@ function LiftControls(props: {
           minusLabel={`${fmtW(step)} kilograms less`}
           plusLabel={`${fmtW(step)} kilograms more`}
         />
-        <input
-          className="sk-rng"
-          type="range"
-          min={0}
+        <Slider
+          value={w}
           max={wMax}
           step={step}
-          value={w}
-          onChange={(e) => setW(Number(e.target.value))}
-          aria-label={bw ? "Added weight" : "Weight"}
-          aria-valuetext={showBW ? "Bodyweight" : `${fmtW(w)} kilograms`}
-          style={{ background: track(clamp((w / wMax) * 100, 0, 100)) }}
+          onChange={setW}
+          label={bw ? "Added weight" : "Weight"}
+          valueText={showBW ? "Bodyweight" : `${fmtW(w)} kilograms`}
         />
       </div>
       <div>
@@ -440,35 +433,15 @@ function LiftControls(props: {
           minusLabel="One rep less"
           plusLabel="One rep more"
         />
-        <div style={{ position: "relative" }}>
-          {we.rep_min != null && (
-            <span
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                left: `${Math.round((zMin / rMax) * 1000) / 10}%`,
-                width: `${Math.max(3, Math.round(((zMax - zMin) / rMax) * 1000) / 10)}%`,
-                top: -6,
-                height: 16,
-                borderRadius: 999,
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                pointerEvents: "none",
-              }}
-            />
-          )}
-          <input
-            className="sk-rng"
-            type="range"
-            min={0}
-            max={rMax}
-            step={1}
-            value={r}
-            onChange={(e) => setR(Number(e.target.value))}
-            aria-label="Reps"
-            style={{ position: "relative", background: track(clamp((r / rMax) * 100, 0, 100)) }}
-          />
-        </div>
+        <Slider
+          value={r}
+          max={rMax}
+          step={1}
+          onChange={setR}
+          label="Reps"
+          valueText={`${r} reps`}
+          band={we.rep_min != null ? { from: zMin, to: zMax } : undefined}
+        />
         <p
           style={{
             margin: "10px 0 0",
@@ -572,6 +545,115 @@ function Stepper(props: {
         >
           <Icon name="plus" size={14} />
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The design's value slider, built so it never fights the card swipe: only the thumb
+ * drags (a press elsewhere on the row can still swipe the card), and tapping the track
+ * jumps to that value. Keyboard: arrows step, Page Up/Down jump ten steps, Home/End.
+ */
+function Slider(props: {
+  value: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  label: string;
+  valueText: string;
+  band?: { from: number; to: number } | undefined;
+}) {
+  const { value, max, step, onChange, label, valueText, band } = props;
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const [active, setActive] = useState(false);
+  const pct = clamp((value / (max || 1)) * 100, 0, 100);
+  const snap = (v: number) => clamp(Math.round(v / step) * step, 0, max);
+  const valueAt = (clientX: number) => {
+    const r = trackRef.current!.getBoundingClientRect();
+    return snap(clamp((clientX - r.left) / r.width, 0, 1) * max);
+  };
+
+  return (
+    <div
+      className="sk-slider"
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest(".sk-slider-thumb")) return;
+        onChange(valueAt(e.clientX));
+      }}
+    >
+      <div ref={trackRef} className="sk-slider-track" style={{ background: track(pct) }}>
+        {band && (
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: `${Math.round((band.from / (max || 1)) * 1000) / 10}%`,
+              width: `${Math.max(3, Math.round(((band.to - band.from) / (max || 1)) * 1000) / 10)}%`,
+              top: -6,
+              height: 16,
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              pointerEvents: "none",
+            }}
+          />
+        )}
+        <div
+          role="slider"
+          tabIndex={0}
+          aria-label={label}
+          aria-valuemin={0}
+          aria-valuemax={max}
+          aria-valuenow={value}
+          aria-valuetext={valueText}
+          data-no-swipe
+          className={`sk-slider-thumb${active ? " is-active" : ""}`}
+          style={{ left: `${pct}%` }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            try {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            } catch {
+              // ignore
+            }
+            dragging.current = true;
+            setActive(true);
+          }}
+          onPointerMove={(e) => {
+            if (dragging.current) onChange(valueAt(e.clientX));
+          }}
+          onPointerUp={() => {
+            dragging.current = false;
+            setActive(false);
+          }}
+          onPointerCancel={() => {
+            dragging.current = false;
+            setActive(false);
+          }}
+          onKeyDown={(e) => {
+            const big = step * 10;
+            const next =
+              e.key === "ArrowRight" || e.key === "ArrowUp"
+                ? value + step
+                : e.key === "ArrowLeft" || e.key === "ArrowDown"
+                  ? value - step
+                  : e.key === "PageUp"
+                    ? value + big
+                    : e.key === "PageDown"
+                      ? value - big
+                      : e.key === "Home"
+                        ? 0
+                        : e.key === "End"
+                          ? max
+                          : null;
+            if (next == null) return;
+            e.preventDefault();
+            e.stopPropagation();
+            onChange(clamp(Math.round(next * 10) / 10, 0, max));
+          }}
+        />
       </div>
     </div>
   );
