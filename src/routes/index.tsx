@@ -1,10 +1,19 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Landing } from "@/components/Landing";
 import { StatusChip } from "@/components/StatusChip";
 import { useAuth } from "@/lib/auth";
-import { fetchBodyMetrics, fetchDays, fetchHistory, fetchPRs, fetchProfile } from "@/lib/api";
+import {
+  dayQueryKey,
+  fetchBodyMetrics,
+  fetchDayWithExercises,
+  fetchDays,
+  fetchHistory,
+  fetchPRs,
+  fetchProfile,
+} from "@/lib/api";
 import { buildWeekStatus } from "@/lib/weekStatus";
 import { DashboardSkeleton } from "@/components/Skeleton";
 import { Heatmap, type WorkoutActivity } from "@/components/Heatmap";
@@ -100,6 +109,9 @@ function Dashboard() {
   const { data: days } = useQuery({
     queryKey: ["days", user?.id, profile?.active_template_id],
     queryFn: () => fetchDays(user?.id, profile?.active_template_id),
+    // Wait for the profile: without its active plan this fetches every plan's days,
+    // briefly showing another plan's workout as "today" before refetching.
+    enabled: !user || profile !== undefined,
   });
   const { data: history } = useQuery({
     queryKey: ["history", user?.id],
@@ -119,6 +131,16 @@ function Dashboard() {
 
   const dow = new Date().getDay();
   const today = (days ?? []).find((d) => d.day_of_week === dow && !d.is_optional);
+
+  // Load today's workout in the background so tapping Start opens it instantly.
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!user?.id || !today || today.is_rest) return;
+    qc.prefetchQuery({
+      queryKey: dayQueryKey(today.slug, user.id),
+      queryFn: () => fetchDayWithExercises(today.slug, user.id),
+    });
+  }, [qc, user?.id, today]);
   const optional = (days ?? []).filter((d) => d.is_optional);
   const weekDays = (days ?? []).filter((d) => !d.is_optional);
   const weightEntries = (metrics ?? []).filter((m) => m.weight_kg != null);

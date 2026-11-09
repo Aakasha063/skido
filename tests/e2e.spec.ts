@@ -41,20 +41,34 @@ test.describe('E2E Flow', () => {
     await clickNav('/plan');
     await expect(page.locator('text=Workout Plan').first()).toBeVisible();
     
-    // 5. Workout Logging Flow
+    // 5. Workout Logging Flow — one swipe card per set
     console.log('Starting workout flow...');
     await page.goto(`${appUrl}/workout/thursday?start=true`);
-    await expect(page.locator('text=Finish Workout').first()).toBeVisible();
+    const topCard = page.locator('.wk-card[data-depth="0"]:not(.is-exiting)');
+    const progress = page.locator('.wk-header-stats span');
+    await expect(topCard).toBeVisible();
 
-    console.log('Logging a set...');
-    const logButton = page.locator('button:has-text("Log")').first();
-    await logButton.click({ force: true });
-    await page.waitForTimeout(1000); 
+    console.log('Logging a set by swiping right...');
+    const box = (await topCard.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + 60; // drag from the card's top, away from the sliders
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 12; i++) await page.mouse.move(x + i * 20, y + i);
+    await page.mouse.up();
+    await expect(progress).toContainText('1/');
 
-    console.log('Finishing workout...');
-    await page.locator('button:has-text("Finish Workout")').first().click({ force: true });
-    
+    console.log('Skipping a set, then undoing the skip...');
+    await page.getByRole('button', { name: 'Skip this set' }).click();
+    await expect(progress).toContainText('2/');
+    await page.getByRole('button', { name: 'Undo the last card' }).click();
+    await expect(progress).toContainText('1/');
+
+    console.log('Finishing workout early...');
+    page.once('dialog', (dialog) => dialog.accept()); // "N sets left. Finish now?"
+    await page.getByRole('button', { name: 'End' }).click();
+
     console.log('Verifying completion screen layout...');
-    await expect(page.locator('text=Workout Complete').first()).toBeVisible();
+    await expect(page.locator('text=Workout complete').first()).toBeVisible();
   });
 });

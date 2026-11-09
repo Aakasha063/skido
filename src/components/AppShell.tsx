@@ -6,15 +6,14 @@ import { useAuth } from "@/lib/auth";
 import { Onboarding } from "@/components/Onboarding";
 import {
   fetchProfile,
-  fetchDays,
   fetchHistory,
   fetchPRs,
   fetchBodyMetrics,
-  fetchExercises,
   fetchLeaderboard,
   fetchAllSets,
 } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
+import { clearPersistedQueryCache } from "@/lib/queryPersist";
 
 const NAV = [
   { to: "/", label: "Today" },
@@ -96,17 +95,28 @@ export function AppShell({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const [quickMenuOpen, setQuickMenuOpen] = useState(false);
 
-  // Prefetch shared data immediately on login so all pages get instant cache hits
+  // Warm the caches other tabs read so switching tabs is instant — but only once the
+  // current page's own requests are out, so they don't compete for the connection.
   useEffect(() => {
     if (!session?.user?.id) return;
     const uid = session.user.id;
-    qc.prefetchQuery({ queryKey: ["days", uid], queryFn: () => fetchDays(uid) });
-    qc.prefetchQuery({ queryKey: ["history", uid], queryFn: () => fetchHistory(uid) });
-    qc.prefetchQuery({ queryKey: ["prs", uid], queryFn: () => fetchPRs(uid) });
-    qc.prefetchQuery({ queryKey: ["metrics", uid], queryFn: () => fetchBodyMetrics(uid) });
-    qc.prefetchQuery({ queryKey: ["exercises"], queryFn: fetchExercises });
-    qc.prefetchQuery({ queryKey: ["leaderboard", 30], queryFn: () => fetchLeaderboard(30) });
-    qc.prefetchQuery({ queryKey: ["all-sets", uid], queryFn: () => fetchAllSets(uid) });
+    const warm = () => {
+      qc.prefetchQuery({ queryKey: ["history", uid], queryFn: () => fetchHistory(uid) });
+      qc.prefetchQuery({ queryKey: ["prs", uid], queryFn: () => fetchPRs(uid) });
+      qc.prefetchQuery({ queryKey: ["metrics", uid], queryFn: () => fetchBodyMetrics(uid) });
+      qc.prefetchQuery({ queryKey: ["leaderboard", 30], queryFn: () => fetchLeaderboard(30) });
+      qc.prefetchQuery({ queryKey: ["all-sets", uid], queryFn: () => fetchAllSets(uid) });
+    };
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (w.requestIdleCallback && w.cancelIdleCallback) {
+      const id = w.requestIdleCallback(warm, { timeout: 2500 });
+      return () => w.cancelIdleCallback!(id);
+    }
+    const id = setTimeout(warm, 1200);
+    return () => clearTimeout(id);
   }, [session?.user?.id, qc]);
 
   useEffect(() => {
@@ -660,5 +670,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 // Export signOut helper for Profile page
 export async function signOut() {
+  clearPersistedQueryCache();
   await supabase.auth.signOut();
 }

@@ -1,30 +1,49 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+import { Check, ChevronLeft, Info, Undo2, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RestTimer } from "@/components/RestTimer";
 import { ExerciseInstructions } from "@/components/ExerciseInstructions";
 import { HIITInstructions } from "@/components/HIITInstructions";
 import { WorkoutSkeleton } from "@/components/Skeleton";
+import { SubstitutionModal } from "@/components/SubstitutionModal";
+import {
+  SwipeDeck,
+  type SwipeDeckHandle,
+  type SwipeDirection,
+} from "@/components/workout/SwipeDeck";
+import { SetCard } from "@/components/workout/SetCard";
 import { useAuth } from "@/lib/auth";
 import {
-  ensureExerciseSessions,
-  fetchTodaySessionForDay,
+  dayQueryKey,
+  deleteSet,
+  ensureExerciseSessionMap,
   fetchDayWithExercises,
-  fetchPreviousPerformance,
-  fetchSessionDetail,
+  fetchRecentSetsForExercises,
+  fetchTodayLiveSession,
   finishSession,
   logSet,
-  startSession,
-  deleteSet,
   replaceSessionExercise,
+  startLiveSession,
+  type DayWithExercises,
   type Exercise,
+  type ExerciseSessionMap,
+  type LiveSession,
+  type WorkoutExercise,
 } from "@/lib/api";
-import { suggestNextSet } from "@/lib/progression";
+import {
+  buildDeck,
+  cardDefaults,
+  cardKey,
+  groupPreviousPerformance,
+  type DeckCard,
+  type LoggedValues,
+} from "@/lib/workoutDeck";
 import { mmss } from "@/lib/format";
-import { SubstitutionModal } from "@/components/SubstitutionModal";
+import { clearWorkoutNotification, showWorkoutNotification } from "@/lib/notifications";
 
 export const Route = createFileRoute("/workout/$slug")({
   validateSearch: (search: Record<string, unknown>): { start?: boolean } => {
@@ -37,7 +56,7 @@ export const Route = createFileRoute("/workout/$slug")({
       { title: "Live Session — Skido" },
       {
         name: "description",
-        content: "Run your workout: log every set, see last time's numbers and rest between sets.",
+        content: "Run your workout one set at a time: swipe right to log, left to skip.",
       },
       { property: "og:title", content: "Live Session — Skido" },
       { property: "og:type", content: "website" },
@@ -51,1555 +70,892 @@ export const Route = createFileRoute("/workout/$slug")({
   ),
 });
 
-const MAX_WEIGHT_KG = 300;
+type Card = DeckCard<WorkoutExercise>;
+type DoneResult = {
+  status: "done";
+  weight: number | null;
+  reps: number;
+  /** Resolves to the saved set's id, or null if saving failed. Never rejects. */
+  saved: Promise<string | null>;
+};
+type Result = DoneResult | { status: "skipped" };
+type Log = { results: Record<string, Result>; order: string[] };
+type Ready = { sessionId: string; exerciseSessionIds: ExerciseSessionMap };
+type Phase = "loading" | "overview" | "active" | "completed";
+type Summary = {
+  title: string;
+  duration: string;
+  sets: number;
+  skipped: number;
+  volume: number;
+  prs: number;
+};
+
+const EMPTY_LOG: Log = { results: {}, order: [] };
+const isDone = (r: Result | undefined): r is DoneResult => r?.status === "done";
+const fmtNum = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+
+// Skips aren't stored in the database, so remember them per session on this device.
+const skipsKey = (sessionId: string) => `skido:skips:${sessionId}`;
+function loadSkips(sessionId: string): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(skipsKey(sessionId)) ?? "[]") as string[];
+  } catch {
+    return [];
+  }
+}
+function saveSkips(sessionId: string, keys: string[]) {
+  try {
+    localStorage.setItem(skipsKey(sessionId), JSON.stringify(keys));
+  } catch {
+    // best-effort
+  }
+}
+
+function logFromServer(live: LiveSession, deckKeys: Set<string>): Log {
+  const entries: { key: string; at: string; result: Result }[] = [];
+  for (const es of live.exercise_sessions) {
+    if (!es.workout_exercise_id) continue;
+    for (const s of es.sets) {
+      const key = cardKey(es.workout_exercise_id, s.set_number);
+      if (s.is_warmup || !deckKeys.has(key)) continue;
+      entries.push({
+        key,
+        at: s.performed_at,
+        result: {
+          status: "done",
+          weight: s.weight_kg,
+          reps: s.reps ?? 0,
+          saved: Promise.resolve(s.id),
+        },
+      });
+    }
+  }
+  entries.sort((a, b) => a.at.localeCompare(b.at));
+  const log: Log = { results: {}, order: [] };
+  for (const e of entries) {
+    if (log.results[e.key]) continue;
+    log.results[e.key] = e.result;
+    log.order.push(e.key);
+  }
+  for (const key of loadSkips(live.id)) {
+    if (!deckKeys.has(key) || log.results[key]) continue;
+    log.results[key] = { status: "skipped" };
+    log.order.push(key);
+  }
+  return log;
+}
+
+function vibrate(ms: number) {
+  if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(ms);
+}
 
 function WorkoutPage() {
   const { slug } = Route.useParams();
+  const search = Route.useSearch();
   const { user } = useAuth();
+  const uid = user?.id;
   const qc = useQueryClient();
   const router = useRouter();
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [finishing, setFinishing] = useState(false);
-  const [completedSummary, setCompletedSummary] = useState<{
-    title: string;
-    duration: string;
-    sets: number;
-    volume: number;
-    prs: number;
-  } | null>(null);
-  const [rest, setRest] = useState<{ seconds: number; key: number; exerciseName?: string } | null>(null);
-  const [info, setInfo] = useState<Exercise | null>(null);
-  const [startedAt, setStartedAt] = useState(() => Date.now());
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const search = Route.useSearch();
-  const autoStart = search.start;
-  const [sessionStarted, setSessionStarted] = useState(false);
 
-  useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(id);
+  const planQ = useQuery({
+    queryKey: dayQueryKey(slug, uid),
+    queryFn: () => fetchDayWithExercises(slug, uid),
+  });
+  const plan = planQ.data;
+  const dayId = plan?.day.id;
+
+  // Always fresh: resuming must reflect exactly what's saved right now.
+  const liveQ = useQuery({
+    queryKey: ["live-session", uid, dayId],
+    queryFn: () => fetchTodayLiveSession(uid!, dayId!),
+    enabled: !!uid && !!dayId,
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+  const exerciseIds = useMemo(
+    () => [...new Set((plan?.exercises ?? []).map((e) => e.exercise_id))].sort(),
+    [plan],
+  );
+  const recentQ = useQuery({
+    queryKey: ["recent-sets", uid, exerciseIds.join(",")],
+    queryFn: () => fetchRecentSetsForExercises(uid!, exerciseIds),
+    enabled: !!uid && exerciseIds.length > 0,
+    staleTime: 60_000,
+  });
+
+  const deck = useMemo(() => buildDeck(plan?.exercises ?? []), [plan]);
+  const deckKeys = useMemo(() => new Set(deck.map((c) => c.key)), [deck]);
+
+  const [phase, setPhase] = useState<Phase>("loading");
+  const [log, setLog] = useState<Log>(EMPTY_LOG);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [ownExerciseSessionIds, setOwnExerciseSessionIds] = useState<Set<string>>(() => new Set());
+  const [startedAt, setStartedAt] = useState(() => Date.now());
+  const [completedDuration, setCompletedDuration] = useState<number | null>(null);
+  const [rest, setRest] = useState<{
+    seconds: number;
+    key: number;
+    next: string | undefined;
+  } | null>(null);
+  const [info, setInfo] = useState<Exercise | null>(null);
+  const [replacing, setReplacing] = useState<Card | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  const [summary, setSummary] = useState<Summary | null>(null);
+
+  const readyRef = useRef<Promise<Ready> | null>(null);
+  const startFailed = useRef(false);
+  const overrides = useRef<Record<string, LoggedValues>>({});
+  const initialized = useRef(false);
+  const deckRef = useRef<SwipeDeckHandle>(null);
+  /** Set saves/removals still on their way to the server. */
+  const pendingWrites = useRef(0);
+  const track = useCallback(<T,>(p: Promise<T>) => {
+    pendingWrites.current++;
+    p.finally(() => pendingWrites.current--).catch(() => undefined);
+    return p;
   }, []);
 
-  const { data: plan, isLoading: planLoading } = useQuery({
-    queryKey: ["day", slug, user?.id],
-    queryFn: () => fetchDayWithExercises(slug, user?.id),
-  });
-
-  // A session already logged today for this day — in_progress (e.g. after a page
-  // reload) or completed (already finished today). Either way, open it directly
-  // instead of showing the pre-start overview or letting the user spin up a
-  // duplicate session for a day that's already done.
-  const { data: todaySession, isLoading: todaySessionLoading } = useQuery({
-    queryKey: ["today-session", user?.id, plan?.day?.id],
-    queryFn: () => fetchTodaySessionForDay(user!.id, plan!.day.id),
-    enabled: !!user && !!plan?.day,
-  });
-
+  // Swipes are saved in the background; warn before the tab is closed mid-save.
   useEffect(() => {
-    if (!user || !plan?.day || sessionId || sessionStarted) return;
-    if (todaySessionLoading) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (pendingWrites.current > 0) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
 
-    if (todaySession) {
-      setSessionStarted(true);
-      setSessionId(todaySession.id);
-      ensureExerciseSessions(user.id, todaySession.id, plan.exercises)
-        .then((backfilled) => {
-          if (backfilled) qc.invalidateQueries({ queryKey: ["session", todaySession.id] });
-        })
-        .catch((e) => toast.error(e.message));
-      return;
+  // The running session's own sets must never count as "last time".
+  const excludeFromHistory = useMemo(() => {
+    const ids = new Set(ownExerciseSessionIds);
+    for (const es of liveQ.data?.exercise_sessions ?? []) ids.add(es.id);
+    return ids;
+  }, [ownExerciseSessionIds, liveQ.data]);
+  const previousByExercise = useMemo(
+    () => groupPreviousPerformance(recentQ.data ?? [], excludeFromHistory),
+    [recentQ.data, excludeFromHistory],
+  );
+
+  const loggedValues = useMemo(() => {
+    const m: Record<string, LoggedValues> = {};
+    for (const [k, r] of Object.entries(log.results))
+      if (isDone(r)) m[k] = { weight: r.weight, reps: r.reps };
+    return m;
+  }, [log]);
+
+  const defaultsFor = useCallback(
+    (card: Card) =>
+      cardDefaults(card, {
+        log: loggedValues,
+        prevSets: previousByExercise[card.we.exercise_id]?.sets,
+      }),
+    [loggedValues, previousByExercise],
+  );
+
+  const remaining = useMemo(() => deck.filter((c) => !log.results[c.key]), [deck, log]);
+  const doneCount = useMemo(() => Object.values(log.results).filter(isDone).length, [log]);
+  const skippedCount = log.order.length - doneCount;
+
+  const adoptLive = useCallback((live: LiveSession, p: DayWithExercises, userId: string) => {
+    setSessionId(live.id);
+    setStartedAt(new Date(live.started_at).getTime());
+    setCompletedDuration(live.duration_seconds);
+    setLog(logFromServer(live, new Set(buildDeck(p.exercises).map((c) => c.key))));
+    if (live.status !== "completed") {
+      const ready = ensureExerciseSessionMap(
+        userId,
+        live.id,
+        p.exercises,
+        live.exercise_sessions,
+      ).then((exerciseSessionIds) => ({ sessionId: live.id, exerciseSessionIds }));
+      ready.catch((e: Error) => toast.error(e.message || "Couldn't reconnect to your workout"));
+      readyRef.current = ready;
     }
+  }, []);
 
-    if (!autoStart) return;
-    setSessionStarted(true);
-    startSession({ userId: user.id, day: plan.day, exercises: plan.exercises })
-      .then((s) => setSessionId(s.id))
-      .catch((e) => {
-        setSessionStarted(false);
-        toast.error(e.message || "Failed to start session");
-      });
-  }, [user, plan, sessionId, autoStart, sessionStarted, todaySession, todaySessionLoading, qc]);
-
-  function handleManualStart() {
-    if (!user) {
-      toast.info("Please sign in to start and save workouts");
+  const start = useCallback(() => {
+    if (!uid) {
+      toast.info("Sign in to start and save workouts");
       router.navigate({ to: "/auth" });
       return;
     }
-    if (!plan?.day || sessionId || sessionStarted) return;
-    setSessionStarted(true);
-    setNowMs(Date.now());
-    startSession({ userId: user.id, day: plan.day, exercises: plan.exercises })
-      .then((s) => {
-        setSessionId(s.id);
-        toast.success("Workout started!");
+    if (!plan || readyRef.current) return;
+    startFailed.current = false;
+    setPhase("active");
+    setStartedAt(Date.now());
+
+    const started = startLiveSession(plan.day);
+    readyRef.current = started.then((r) => ({
+      sessionId: r.session.id,
+      exerciseSessionIds: r.exerciseSessionIds,
+    }));
+    started
+      .then(({ session, exerciseSessionIds }) => {
+        setSessionId(session.id);
+        setStartedAt(new Date(session.started_at).getTime());
+        setOwnExerciseSessionIds(new Set(Object.values(exerciseSessionIds)));
+        // Continuing a session begun before midnight: fold in what was already logged.
+        if (session.exercise_sessions.some((es) => es.sets.length > 0)) {
+          const server = logFromServer(session, deckKeys);
+          setLog((prev) => ({
+            results: { ...server.results, ...prev.results },
+            order: [...server.order.filter((k) => !prev.results[k]), ...prev.order],
+          }));
+        }
+        qc.invalidateQueries({ queryKey: ["history", uid] });
       })
-      .catch((e) => {
-        setSessionStarted(false);
-        toast.error(e.message || "Failed to start workout");
+      .catch((err: Error) => {
+        startFailed.current = true;
+        readyRef.current = null;
+        toast.error(err?.message || "Couldn't start the workout");
+        setPhase("overview");
+        setLog(EMPTY_LOG);
+        setRest(null);
       });
-  }
+  }, [uid, plan, router, qc, deckKeys]);
 
-  const { data: detail } = useQuery({
-    queryKey: ["session", sessionId],
-    queryFn: () => fetchSessionDetail(sessionId!),
-    enabled: !!sessionId,
-  });
-
-  // Keep the elapsed-time clock anchored to when the session actually started,
-  // so resuming after a reload doesn't reset the timer to 0.
+  // Decide what to show once we know whether today's session already exists.
   useEffect(() => {
-    if (detail?.session.started_at) {
-      setStartedAt(new Date(detail.session.started_at).getTime());
+    if (initialized.current || !plan) return;
+    if (uid && !liveQ.isFetched) return;
+    initialized.current = true;
+    const live = liveQ.data;
+    if (live && uid) {
+      adoptLive(live, plan, uid);
+      setPhase(live.status === "completed" ? "completed" : "active");
+      return;
     }
-  }, [detail?.session.started_at]);
+    setPhase("overview");
+    if (search.start) start();
+  }, [plan, uid, liveQ.isFetched, liveQ.data, search.start, adoptLive, start]);
 
-  // Only count sets that belong to an exercise still in today's plan. A session can
-  // carry sets logged against a workout_exercise that's since been swapped out of the
-  // day (e.g. the plan was edited), and those must not inflate the progress count or
-  // trigger a premature auto-finish.
-  const validSets = useMemo(() => {
-    if (!detail || !plan) return [];
-    const planWorkoutExerciseIds = new Set(plan.exercises.map((we) => we.id));
-    const validExerciseSessionIds = new Set(
-      detail.exSessions
-        .filter(
-          (es) =>
-            es.workout_exercise_id != null && planWorkoutExerciseIds.has(es.workout_exercise_id),
-        )
-        .map((es) => es.id),
+  useEffect(() => {
+    if (!sessionId || phase !== "active") return;
+    saveSkips(
+      sessionId,
+      Object.entries(log.results)
+        .filter(([, r]) => r.status === "skipped")
+        .map(([k]) => k),
     );
-    return detail.sets.filter((s) => validExerciseSessionIds.has(s.exercise_session_id));
-  }, [detail, plan]);
+  }, [log, sessionId, phase]);
 
-  const completedSets = validSets.length;
-  const totalSets = useMemo(() => (plan?.exercises ?? []).reduce((n, e) => n + e.sets, 0), [plan]);
-  const isCompletedToday = detail?.session.status === "completed";
+  const handleSwipe = useCallback(
+    (card: Card, dir: SwipeDirection) => {
+      const key = card.key;
+      if (dir === "left") {
+        setLog((prev) => ({
+          results: { ...prev.results, [key]: { status: "skipped" } },
+          order: [...prev.order, key],
+        }));
+        // A running rest timer keeps going: skipping a set doesn't mean you've recovered.
+        vibrate(8);
+        return;
+      }
+
+      const values = { ...defaultsFor(card), ...overrides.current[key] };
+      if (card.isCardio) values.weight = null;
+      const ready = readyRef.current;
+      const write: Promise<string> = ready
+        ? ready.then(async ({ exerciseSessionIds }) => {
+            const exerciseSessionId = exerciseSessionIds[card.we.id];
+            if (!exerciseSessionId)
+              throw new Error("This exercise isn't part of the running session");
+            const row = await logSet({
+              userId: uid!,
+              exerciseSessionId,
+              exerciseId: card.we.exercise_id,
+              setNumber: card.setNumber,
+              weight: values.weight,
+              reps: values.reps,
+              rir: null,
+            });
+            return row.id;
+          })
+        : Promise.reject(new Error("The workout hasn't started"));
+
+      const saved: Promise<string | null> = track(write).catch(() => {
+        if (startFailed.current) return null;
+        toast.error("Couldn't save that set — it's back on top.");
+        setLog((prev) => {
+          const cur = prev.results[key];
+          if (!isDone(cur) || cur.saved !== saved) return prev;
+          const { [key]: _removed, ...results } = prev.results;
+          return { results, order: prev.order.filter((k) => k !== key) };
+        });
+        return null;
+      });
+
+      setLog((prev) => ({
+        results: {
+          ...prev.results,
+          [key]: { status: "done", weight: values.weight, reps: values.reps, saved },
+        },
+        order: [...prev.order, key],
+      }));
+      vibrate(12);
+
+      const next = remaining.find((c) => c.key !== key);
+      const restSeconds = card.we.rest_seconds ?? 0;
+      setRest(
+        restSeconds > 0 && next
+          ? { seconds: restSeconds, key: Date.now(), next: next.we.exercises.name }
+          : null,
+      );
+    },
+    [defaultsFor, remaining, uid, track],
+  );
+
+  const undo = useCallback(() => {
+    const key = log.order[log.order.length - 1];
+    if (!key) return;
+    const res = log.results[key];
+    const { [key]: _removed, ...results } = log.results;
+    setLog({ results, order: log.order.slice(0, -1) });
+    setRest(null);
+    if (isDone(res)) {
+      overrides.current[key] = { weight: res.weight, reps: res.reps };
+      track(res.saved.then((id) => (id ? deleteSet(id) : undefined))).catch(() =>
+        toast.error("Couldn't remove that set from your log"),
+      );
+    }
+  }, [log, track]);
 
   const finish = useCallback(async () => {
-    // A session already marked completed must never be re-finished: startedAt is
-    // anchored to when it was ORIGINALLY started, so recomputing duration here (e.g.
-    // if this fires while merely editing a logged set) would overwrite the correct
-    // saved duration with a huge, wrong "hours since it first started" value.
-    if (!user || !sessionId || finishing || isCompletedToday) return;
+    if (!uid || !plan || finishing) return;
+    const ready = readyRef.current;
+    if (!ready) return;
     setFinishing(true);
-    const duration = Math.round((Date.now() - startedAt) / 1000);
-    const prs = await finishSession({ userId: user.id, sessionId, durationSeconds: duration });
-
-    // Calculate final volume
-    const finalVolume = validSets.reduce((acc, s) => acc + (s.weight_kg ?? 0) * (s.reps ?? 0), 0);
-
-    setCompletedSummary({
-      title: plan?.day?.name ?? "Workout",
-      duration: mmss(duration),
-      sets: completedSets,
-      volume: finalVolume,
-      prs: prs.length,
-    });
-
-    clearWorkoutNotification();
-    qc.invalidateQueries();
-  }, [user, sessionId, finishing, isCompletedToday, startedAt, qc, validSets, plan, completedSets]);
-
-  const requestFinish = useCallback(() => {
-    if (completedSets >= totalSets) {
-      finish();
-    } else {
-      const ok = window.confirm(
-        `You still have ${totalSets - completedSets} sets remaining. Finish anyway?`,
-      );
-      if (ok) finish();
-    }
-  }, [completedSets, totalSets, finish]);
-
-  useEffect(() => {
-    // Don't auto-pop the completion screen just from reopening a session that was
-    // already finished — only when it genuinely just crossed the finish line live.
-    if (detail?.session.status === "completed") return;
-    if (completedSets > 0 && totalSets > 0 && completedSets >= totalSets) {
-      finish();
-    }
-  }, [completedSets, totalSets, finish, detail?.session.status]);
-
-  const elapsedSeconds = isCompletedToday
-    ? (detail?.session.duration_seconds ?? 0)
-    : Math.round((nowMs - startedAt) / 1000);
-  const workoutElapsedLabel = mmss(elapsedSeconds);
-  const workoutPct = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
-  // Calculate total volume for this session
-  const sessionVolume = validSets.reduce((acc, s) => acc + (s.weight_kg ?? 0) * (s.reps ?? 0), 0);
-
-  // Keep active workout notification updated on lock screen
-  useEffect(() => {
-    if (!sessionId || isCompletedToday) return;
-
-    function onVisibilityChange() {
-      if (document.visibilityState === "hidden" && !isCompletedToday) {
-        showWorkoutNotification({
-          title: `🏋️ ${plan?.day?.name || "Workout"} in Progress`,
-          body: `${completedSets}/${totalSets} sets completed · ${workoutElapsedLabel}`,
-          tag: "active-workout",
-        });
+    try {
+      const { sessionId: sid } = await ready;
+      // Wait for every in-flight set so PRs are evaluated on the complete workout.
+      const done = Object.values(log.results).filter(isDone);
+      const settled = await Promise.all(done.map(async (r) => ({ r, id: await r.saved })));
+      const kept = settled.filter((x) => x.id).map((x) => x.r);
+      const duration = Math.round((Date.now() - startedAt) / 1000);
+      const prs = await finishSession({ userId: uid, sessionId: sid, durationSeconds: duration });
+      clearWorkoutNotification();
+      try {
+        localStorage.removeItem(skipsKey(sid));
+      } catch {
+        // ignore
       }
+      setRest(null);
+      setSummary({
+        title: plan.day.focus ?? plan.day.name,
+        duration: mmss(duration),
+        sets: kept.length,
+        skipped: skippedCount,
+        volume: kept.reduce((sum, r) => sum + (r.weight ?? 0) * r.reps, 0),
+        prs: prs.length,
+      });
+      qc.invalidateQueries();
+    } catch (e) {
+      toast.error((e as Error).message || "Couldn't finish the workout");
+    } finally {
+      setFinishing(false);
     }
+  }, [uid, plan, finishing, log, startedAt, skippedCount, qc]);
 
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+  const requestEnd = useCallback(() => {
+    if (
+      remaining.length === 0 ||
+      window.confirm(`${remaining.length} sets left. Finish the workout now?`)
+    ) {
+      finish();
+    }
+  }, [remaining.length, finish]);
+
+  const dismissRest = useCallback(() => setRest(null), []);
+
+  // Keyboard: → log, ← skip, ⌘/Ctrl+Z undo.
+  useEffect(() => {
+    if (phase !== "active" || summary) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (info || replacing) return;
+      const target = e.target as HTMLElement;
+      if (target.closest("input, textarea, select, [contenteditable='true'], [role='slider']"))
+        return;
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        deckRef.current?.swipe("right");
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        deckRef.current?.swipe("left");
+      } else if (e.key.toLowerCase() === "z" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        undo();
+      }
     };
-  }, [sessionId, isCompletedToday, plan?.day?.name, completedSets, totalSets, workoutElapsedLabel]);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phase, summary, info, replacing, undo]);
 
-  if (planLoading) return <WorkoutSkeleton />;
+  // Lock-screen progress notification while a workout is running.
+  const progressRef = useRef({ done: 0, total: 0, name: "", startedAt });
+  progressRef.current = {
+    done: log.order.length,
+    total: deck.length,
+    name: plan?.day.name ?? "Workout",
+    startedAt,
+  };
+  useEffect(() => {
+    if (phase !== "active" || summary) return;
+    const onVisibility = () => {
+      if (document.visibilityState !== "hidden") return;
+      const p = progressRef.current;
+      showWorkoutNotification({
+        title: `🏋️ ${p.name} in progress`,
+        body: `${p.done}/${p.total} sets · ${mmss((Date.now() - p.startedAt) / 1000)}`,
+        tag: "active-workout",
+      });
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [phase, summary]);
+
+  // The session runs as a full-screen layer; keep the page underneath from scrolling.
+  useEffect(() => {
+    if (phase !== "active") return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [phase]);
+
+  if (planQ.isLoading || (plan && phase === "loading")) return <WorkoutSkeleton />;
 
   if (!plan) {
     return (
-      <div style={{ textAlign: "center", padding: "60px 20px" }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700 }}>Workout Not Found</h2>
-        <p style={{ color: "oklch(0.6 0.01 250)", marginTop: 6, fontSize: 13 }}>
-          Could not find workout session details for this day.
-        </p>
-        <button
-          onClick={() => router.navigate({ to: "/plan" })}
-          style={{
-            marginTop: 16,
-            background: "oklch(0.92 0.25 110)",
-            color: "oklch(0.07 0.01 110)",
-            border: "none",
-            borderRadius: 8,
-            padding: "8px 16px",
-            fontSize: 13,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          ← Return to Plan
-        </button>
+      <div className="wk-overview">
+        <h1 className="wk-overview-title">Workout not found</h1>
+        <p className="wk-overview-meta">This day isn't part of your plan.</p>
+        <Link to="/plan" className="wk-cta" style={{ marginTop: 20 }}>
+          Back to plan
+        </Link>
       </div>
     );
   }
 
-  // Keep showing the skeleton until we know whether we're resuming an existing
-  // session AND its logged sets have loaded.
-  const resolvingSession =
-    (!!user && todaySessionLoading) || (!!todaySession && (!sessionId || !detail));
-  if (resolvingSession) return <WorkoutSkeleton />;
-
-  if (completedSummary && typeof document !== "undefined") {
+  if (summary && typeof document !== "undefined") {
     return createPortal(
-      <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 60,
-          background: "oklch(0.045 0.003 250)",
-          overflowY: "auto",
-          display: "flex",
-          justifyContent: "center",
-          padding: "40px 20px",
-          paddingBottom: "calc(40px + env(safe-area-inset-bottom))",
-        }}
-      >
-        <div style={{ width: "100%", maxWidth: 480 }}>
-          <p
-            style={{
-              margin: 0,
-              textAlign: "center",
-              fontSize: 12,
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: "oklch(0.92 0.25 110)",
-            }}
-          >
-            Workout Complete
-          </p>
-          <h1 style={{ margin: "8px 0 0", textAlign: "center", fontSize: 22, fontWeight: 600 }}>
-            {completedSummary.title}
-          </h1>
-          <p
-            style={{
-              margin: "16px 0 0",
-              textAlign: "center",
-              fontSize: 48,
-              fontWeight: 700,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {completedSummary.duration}
-          </p>
-
-          <div
-            style={{
-              marginTop: 28,
-              display: "grid",
-              gridTemplateColumns: "repeat(2, 1fr)",
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                background: "oklch(0.11 0.004 250)",
-                border: "1px solid oklch(0.27 0.005 250)",
-                borderRadius: 12,
-                padding: 18,
-                textAlign: "center",
-              }}
-            >
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 11,
-                  color: "oklch(0.63 0.006 250)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                Total sets
-              </p>
-              <p
-                style={{
-                  margin: "6px 0 0",
-                  fontSize: 24,
-                  fontWeight: 700,
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {completedSummary.sets}
-              </p>
-            </div>
-            <div
-              style={{
-                background: "oklch(0.11 0.004 250)",
-                border: "1px solid oklch(0.27 0.005 250)",
-                borderRadius: 12,
-                padding: 18,
-                textAlign: "center",
-              }}
-            >
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 11,
-                  color: "oklch(0.63 0.006 250)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                Volume
-              </p>
-              <p
-                style={{
-                  margin: "6px 0 0",
-                  fontSize: 24,
-                  fontWeight: 700,
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {Number.isInteger(completedSummary.volume)
-                  ? completedSummary.volume
-                  : completedSummary.volume.toFixed(1)}{" "}
-                kg
-              </p>
-            </div>
-            <div
-              style={{
-                background: "oklch(0.11 0.004 250)",
-                border: "1px solid oklch(0.27 0.005 250)",
-                borderRadius: 12,
-                padding: 18,
-                textAlign: "center",
-              }}
-            >
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 11,
-                  color: "oklch(0.63 0.006 250)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                PRs
-              </p>
-              <p
-                style={{
-                  margin: "6px 0 0",
-                  fontSize: 24,
-                  fontWeight: 700,
-                  fontVariantNumeric: "tabular-nums",
-                  color: "oklch(0.92 0.25 110)",
-                }}
-              >
-                {completedSummary.prs}
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => router.navigate({ to: "/history" })}
-            style={{
-              marginTop: 28,
-              width: "100%",
-              height: 48,
-              borderRadius: 10,
-              border: "none",
-              background: "oklch(0.92 0.25 110)",
-              color: "oklch(0.07 0.01 110)",
-              fontSize: 15,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Done
-          </button>
-        </div>
-      </div>,
+      <SummaryScreen summary={summary} onDone={() => router.navigate({ to: "/history" })} />,
       document.body,
     );
   }
 
-  return (
-    <div
-      className="page-enter"
-      style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 120 }}
-    >
-      {/* Sticky Header */}
-      <div
-        className="sticky-below-header"
-        style={{
-          position: "sticky",
-          zIndex: 30,
-          margin: "0 -16px",
-          padding: "12px 16px",
-          background: "oklch(0.045 0.003 250 / 97%)",
-          backdropFilter: "blur(8px)",
-          borderBottom: "1px solid oklch(0.27 0.005 250)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-            <button
-              onClick={() => router.history.back()}
-              aria-label="Back"
-              style={{
-                flexShrink: 0,
-                width: 32,
-                height: 32,
-                borderRadius: 8,
-                border: "1px solid oklch(0.27 0.005 250)",
-                background: "transparent",
-                color: "inherit",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              >
-                <line x1="19" y1="12" x2="5" y2="12"></line>
-                <polyline points="11,18 5,12 11,6"></polyline>
-              </svg>
-            </button>
-            <div style={{ minWidth: 0 }}>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                  color: "oklch(0.63 0.006 250)",
-                }}
-              >
-                {plan.day.name}
-              </p>
-              <h1
-                style={{
-                  margin: "2px 0 0",
-                  fontSize: 18,
-                  fontWeight: 600,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {plan.day.focus}
-              </h1>
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
-            {sessionId ? (
-              <div style={{ textAlign: "right" }}>
-                {isCompletedToday && (
-                  <p
-                    style={{
-                      margin: "0 0 2px",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: "oklch(0.92 0.25 110)",
-                    }}
-                  >
-                    ✓ Completed
-                  </p>
-                )}
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: 16,
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {workoutElapsedLabel}
-                </p>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: 11,
-                    color: "oklch(0.63 0.006 250)",
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {completedSets}/{totalSets} · {workoutPct}%
-                </p>
-              </div>
-            ) : (
-              <button
-                onClick={handleManualStart}
-                disabled={sessionStarted}
-                style={{
-                  height: 36,
-                  padding: "0 18px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "oklch(0.92 0.25 110)",
-                  color: "oklch(0.07 0.01 110)",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: sessionStarted ? "wait" : "pointer",
-                  whiteSpace: "nowrap",
-                  opacity: sessionStarted ? 0.7 : 1,
-                }}
-              >
-                {sessionStarted ? "Starting..." : "Start workout"}
-              </button>
-            )}
-          </div>
-        </div>
-        <div
-          style={{
-            marginTop: 10,
-            height: 3,
-            borderRadius: 999,
-            background: "oklch(0.22 0.005 250)",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{ height: "100%", background: "oklch(0.92 0.25 110)", width: `${workoutPct}%` }}
-          ></div>
-        </div>
-      </div>
-
-      {/* Stats Grid — only shown when workout is active */}
-      {sessionId && (
-        <div
-          className="workout-stats-grid"
-          style={{
-            background: "oklch(0.27 0.005 250)",
-            border: "1px solid oklch(0.27 0.005 250)",
-            borderRadius: 12,
-            overflow: "hidden",
-          }}
-        >
-          <div style={{ background: "oklch(0.11 0.004 250)", padding: 14, textAlign: "center" }}>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 10,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                color: "oklch(0.63 0.006 250)",
-              }}
-            >
-              Time
-            </p>
-            <p
-              style={{
-                margin: "4px 0 0",
-                fontSize: 18,
-                fontWeight: 600,
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {workoutElapsedLabel}
-            </p>
-          </div>
-          <div style={{ background: "oklch(0.11 0.004 250)", padding: 14, textAlign: "center" }}>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 10,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                color: "oklch(0.63 0.006 250)",
-              }}
-            >
-              Volume
-            </p>
-            <p
-              style={{
-                margin: "4px 0 0",
-                fontSize: 18,
-                fontWeight: 600,
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {Number.isInteger(sessionVolume) ? sessionVolume : sessionVolume.toFixed(1)}
-            </p>
-          </div>
-          <div style={{ background: "oklch(0.11 0.004 250)", padding: 14, textAlign: "center" }}>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 10,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                color: "oklch(0.63 0.006 250)",
-              }}
-            >
-              PRs
-            </p>
-            <p
-              style={{
-                margin: "4px 0 0",
-                fontSize: 18,
-                fontWeight: 600,
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              —
-            </p>
-          </div>
-          <div style={{ background: "oklch(0.11 0.004 250)", padding: 14, textAlign: "center" }}>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 10,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                color: "oklch(0.63 0.006 250)",
-              }}
-            >
-              Sets
-            </p>
-            <p
-              style={{
-                margin: "4px 0 0",
-                fontSize: 18,
-                fontWeight: 600,
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {completedSets}/{totalSets}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Exercises */}
-      {plan.day.slug === "saturday-hiit" ? (
-        <div style={{ marginTop: 8 }}>
-          <HIITInstructions />
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {plan.exercises.map((we) => {
-            const es = detail?.exSessions.find(
-              (e) => e.workout_exercise_id === we.id || e.exercise_id === we.exercise_id
-            );
-            return (
-              <ExerciseCard
-                key={we.id}
-                name={we.exercises.name}
-                sets={we.sets}
-                repRange={we.rep_range}
-                repMin={we.rep_min}
-                repMax={we.rep_max}
-                rir={we.rir_target}
-                restNote={we.rest_note}
-                notes={we.notes}
-                isCompound={we.exercises.is_compound}
-                isCardio={we.exercises.category === "cardio"}
-                exerciseId={we.exercise_id}
-                workoutExerciseId={we.id}
-                exerciseSessionId={es?.id ?? null}
-                loggedSets={(detail?.sets ?? []).filter((s) => s.exercise_session_id === es?.id)}
-                userId={user?.id ?? null}
-                sessionId={sessionId}
-                onInfo={() => setInfo(we.exercises)}
-                onLogged={() => {
-                  qc.invalidateQueries({ queryKey: ["session", sessionId] });
-                  setRest({
-                    seconds: we.rest_seconds ?? 90,
-                    key: Date.now(),
-                    exerciseName: we.exercises?.name,
-                  });
-                }}
-              />
-            );
-          })}
-        </div>
-      )}
-
+  const modals = (
+    <>
       <ExerciseInstructions
         exercise={info}
         open={!!info}
         onOpenChange={(v) => !v && setInfo(null)}
       />
-      {rest && rest.seconds > 0 && (
-        <RestTimer
-          key={rest.key}
-          seconds={rest.seconds}
-          exerciseName={rest.exerciseName}
-          onDismiss={() => setRest(null)}
+      {replacing && uid && (
+        <SubstitutionModal
+          originalExerciseId={replacing.we.exercise_id}
+          originalExerciseName={replacing.we.exercises.name}
+          onClose={() => setReplacing(null)}
+          onSelect={async (newExerciseId) => {
+            const card = replacing;
+            try {
+              const ready = readyRef.current ? await readyRef.current : null;
+              await replaceSessionExercise(
+                uid,
+                ready?.sessionId ?? null,
+                card.we.id,
+                card.we.exercise_id,
+                newExerciseId,
+              );
+              for (const k of Object.keys(overrides.current)) {
+                if (k.startsWith(`${card.we.id}:`)) delete overrides.current[k];
+              }
+              await qc.invalidateQueries({ queryKey: ["day", slug] });
+              setReplacing(null);
+              toast.success("Exercise swapped for this and future workouts");
+            } catch (err) {
+              toast.error((err as Error).message);
+            }
+          }}
         />
       )}
+    </>
+  );
 
-      {/* Fixed bottom bar — active workout only (design lines 481-491) */}
-      {sessionId && (
-        <div
-          style={{
-            position: "fixed",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 35,
-            background: "oklch(0.08 0.004 250 / 97%)",
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)",
-            borderTop: "1px solid oklch(0.27 0.005 250)",
-            padding: "10px 16px",
-          }}
-        >
-          <div
-            style={{
-              maxWidth: 480,
-              margin: "0 auto",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 16,
-            }}
-          >
-            <div style={{ display: "flex", gap: 20 }}>
-              <div>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: 10,
-                    color: "oklch(0.63 0.006 250)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                  }}
-                >
-                  Sets
-                </p>
-                <p
-                  style={{
-                    margin: "2px 0 0",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {completedSets}/{totalSets}
-                </p>
-              </div>
-              <div>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: 10,
-                    color: "oklch(0.63 0.006 250)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                  }}
-                >
-                  Time
-                </p>
-                <p
-                  style={{
-                    margin: "2px 0 0",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {workoutElapsedLabel}
-                </p>
-              </div>
-              <div>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: 10,
-                    color: "oklch(0.63 0.006 250)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                  }}
-                >
-                  Volume
-                </p>
-                <p
-                  style={{
-                    margin: "2px 0 0",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
-                    color: "oklch(0.92 0.25 110)",
-                  }}
-                >
-                  {Number.isInteger(sessionVolume) ? sessionVolume : sessionVolume.toFixed(1)} kg
-                </p>
-              </div>
+  if (phase === "overview" || phase === "loading") {
+    return (
+      <>
+        <Overview
+          plan={plan}
+          deckSize={deck.length}
+          onStart={start}
+          onBack={() => router.history.back()}
+          onInfo={setInfo}
+        />
+        {modals}
+      </>
+    );
+  }
+
+  if (phase === "completed") {
+    return (
+      <CompletedView
+        plan={plan}
+        log={log}
+        sessionId={sessionId}
+        duration={completedDuration}
+        onBack={() => router.history.back()}
+      />
+    );
+  }
+
+  const handled = log.order.length;
+  const pct = deck.length ? Math.round((handled / deck.length) * 100) : 0;
+  const upNext = remaining[1];
+  const current = remaining[0];
+
+  return createPortal(
+    <>
+      <div
+        className="wk-layer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${plan.day.name} workout`}
+      >
+        <header className="wk-header">
+          <div className="wk-header-row">
+            <button
+              type="button"
+              className="wk-icon-btn is-ghost"
+              onClick={() => router.history.back()}
+              aria-label="Leave the workout screen (your progress is saved)"
+            >
+              <ChevronLeft size={22} />
+            </button>
+            <div className="wk-header-title">
+              <p>{plan.day.name}</p>
+              <h1>{plan.day.focus ?? plan.day.name}</h1>
             </div>
-            {completedSets >= totalSets && !isCompletedToday && (
-              <button
-                onClick={requestFinish}
-                disabled={finishing}
-                style={{
-                  height: 40,
-                  padding: "0 20px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "oklch(0.92 0.25 110)",
-                  color: "oklch(0.07 0.01 110)",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: finishing ? "wait" : "pointer",
-                  whiteSpace: "nowrap",
-                  opacity: finishing ? 0.7 : 1,
-                }}
-              >
-                {finishing ? "Finishing..." : "Finish Workout"}
-              </button>
-            )}
+            <div className="wk-header-stats">
+              <Clock since={startedAt} />
+              <span>
+                {handled}/{deck.length} sets
+              </span>
+            </div>
+            <button type="button" className="wk-end-btn" onClick={requestEnd} disabled={finishing}>
+              {finishing ? "…" : "End"}
+            </button>
           </div>
+          <div className="wk-progress" aria-hidden>
+            <div style={{ width: `${pct}%` }} />
+          </div>
+          {rest && (
+            <div className="wk-rest-slot">
+              <RestTimer
+                inline
+                key={rest.key}
+                seconds={rest.seconds}
+                exerciseName={rest.next}
+                onDismiss={dismissRest}
+              />
+            </div>
+          )}
+        </header>
+
+        {deck.length === 0 ? (
+          <div className="wk-freeform">
+            {plan.day.slug === "saturday-hiit" ? (
+              <HIITInstructions />
+            ) : (
+              <p className="wk-overview-meta">
+                {plan.day.notes ?? plan.day.cardio_note ?? "Nothing to log today."}
+              </p>
+            )}
+            <button type="button" className="wk-cta" onClick={finish} disabled={finishing}>
+              {finishing ? "Finishing…" : "Finish workout"}
+            </button>
+          </div>
+        ) : (
+          <>
+            <SwipeDeck
+              ref={deckRef}
+              items={remaining}
+              getKey={(c) => c.key}
+              onSwipe={handleSwipe}
+              disabled={finishing}
+              renderCard={(card, { depth }) => (
+                <SetCard
+                  key={card.we.exercise_id}
+                  card={card}
+                  depth={depth}
+                  defaults={defaultsFor(card)}
+                  initial={overrides.current[card.key]}
+                  previous={previousByExercise[card.we.exercise_id]}
+                  onChange={(v) => {
+                    overrides.current[card.key] = v;
+                  }}
+                  onInfo={() => setInfo(card.we.exercises)}
+                  onReplace={() => setReplacing(card)}
+                />
+              )}
+              empty={
+                <EndCard
+                  done={doneCount}
+                  skipped={skippedCount}
+                  finishing={finishing}
+                  onFinish={finish}
+                  onUndo={undo}
+                />
+              }
+            />
+            <div className="wk-actions">
+              <button
+                type="button"
+                className="wk-btn wk-btn-skip"
+                onClick={() => deckRef.current?.swipe("left")}
+                disabled={!current || finishing}
+                aria-label="Skip this set"
+              >
+                <X size={26} strokeWidth={2.5} />
+              </button>
+              <button
+                type="button"
+                className="wk-btn wk-btn-undo"
+                onClick={undo}
+                disabled={handled === 0 || finishing}
+                aria-label="Undo the last card"
+              >
+                <Undo2 size={20} />
+              </button>
+              <button
+                type="button"
+                className="wk-btn wk-btn-done"
+                onClick={() => deckRef.current?.swipe("right")}
+                disabled={!current || finishing}
+                aria-label="Log this set"
+              >
+                <Check size={30} strokeWidth={3} />
+              </button>
+            </div>
+            <p className="wk-next">
+              {upNext
+                ? `Up next · ${upNext.we.exercises.name}${upNext.isCardio ? "" : ` · set ${upNext.setNumber}`}`
+                : current
+                  ? "Last card"
+                  : " "}
+            </p>
+            <p className="sr-only" aria-live="polite">
+              {current
+                ? `${current.we.exercises.name}${current.isCardio ? "" : `, set ${current.setNumber} of ${current.totalSets}`}`
+                : "All sets done"}
+            </p>
+          </>
+        )}
+      </div>
+      {modals}
+    </>,
+    document.body,
+  );
+}
+
+/** Ticks on its own so the rest of the screen doesn't re-render every second. */
+function Clock({ since }: { since: number }) {
+  const [, tick] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => {
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return <strong className="wk-clock">{mmss((Date.now() - since) / 1000)}</strong>;
+}
+
+function Overview({
+  plan,
+  deckSize,
+  onStart,
+  onBack,
+  onInfo,
+}: {
+  plan: DayWithExercises;
+  deckSize: number;
+  onStart: () => void;
+  onBack: () => void;
+  onInfo: (e: Exercise) => void;
+}) {
+  const { day, exercises } = plan;
+  const meta = [
+    `${exercises.length} exercise${exercises.length === 1 ? "" : "s"}`,
+    `${deckSize} card${deckSize === 1 ? "" : "s"}`,
+    day.cardio_note,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className="wk-overview page-enter">
+      <button type="button" className="wk-back" onClick={onBack}>
+        <ChevronLeft size={18} /> Back
+      </button>
+      <p className="wk-eyebrow">{day.name}</p>
+      <h1 className="wk-overview-title">{day.is_rest ? "Rest day" : (day.focus ?? day.name)}</h1>
+      <p className="wk-overview-meta">{meta}</p>
+
+      {exercises.length > 0 && (
+        <ol className="wk-ov-list">
+          {exercises.map((we, i) => (
+            <li key={we.id} className="wk-ov-item">
+              <span className="wk-ov-idx">{i + 1}</span>
+              <div className="wk-ov-text">
+                <p className="wk-ov-name">{we.exercises.name}</p>
+                <p className="wk-ov-sub">
+                  {we.exercises.category === "cardio"
+                    ? we.rep_range
+                    : `${we.sets} × ${we.rep_range}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="wk-icon-btn"
+                onClick={() => onInfo(we.exercises)}
+                aria-label={`How to do ${we.exercises.name}`}
+              >
+                <Info size={17} />
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {!day.is_rest && (
+        <div className="wk-ov-cta">
+          <button type="button" className="wk-cta" onClick={onStart}>
+            Start workout
+          </button>
+          <p>Each set is a card: swipe right to log it, left to skip.</p>
         </div>
       )}
     </div>
   );
 }
 
-function ExerciseCard(props: {
-  name: string;
-  sets: number;
-  repRange: string;
-  repMin: number | null;
-  repMax: number | null;
-  rir: string | null;
-  restNote: string | null;
-  notes: string | null;
-  isCompound: boolean;
-  isCardio: boolean;
-  exerciseId: string;
-  exerciseSessionId: string | null;
-  loggedSets: { id: string; set_number: number; weight_kg: number | null; reps: number | null }[];
-  userId: string | null;
-  sessionId: string | null;
-  workoutExerciseId: string;
-  onInfo: () => void;
-  onLogged: () => void;
+function EndCard(props: {
+  done: number;
+  skipped: number;
+  finishing: boolean;
+  onFinish: () => void;
+  onUndo: () => void;
 }) {
-  const qc = useQueryClient();
-  const { data: previous } = useQuery({
-    queryKey: ["prev", props.userId, props.exerciseId, props.exerciseSessionId],
-    queryFn: () =>
-      fetchPreviousPerformance({
-        userId: props.userId!,
-        exerciseId: props.exerciseId,
-        excludeExerciseSessionId: props.exerciseSessionId ?? undefined,
-      }),
-    enabled: !!props.userId && !props.isCardio,
-  });
-
-  // The lowest set number without a logged entry — NOT just loggedSets.length + 1.
-  // Editing or undoing a set that isn't the last one leaves a gap in the middle
-  // (e.g. sets 1,3,4 logged, 2 missing); using loggedSets.length + 1 there would
-  // point at set 5 (already full), leaving set 2's row permanently stuck showing
-  // "—" with no input or Log button ever appearing for it again.
-  const loggedSetNumbers = new Set(props.loggedSets.map((s) => s.set_number));
-  let nextSetNumber = 1;
-  while (loggedSetNumbers.has(nextSetNumber)) nextSetNumber++;
-  const suggestion = suggestNextSet({
-    prevSets: previous?.sets ?? [],
-    setNumber: nextSetNumber,
-    repMin: props.repMin,
-    repMax: props.repMax,
-    isCompound: props.isCompound,
-  });
-
-  const [weight, setWeight] = useState("");
-  const [reps, setReps] = useState("");
-  // Tracks whether the user has typed their own value for the upcoming set, so the
-  // suggestion pre-fill (below) doesn't clobber it once previous-performance data loads.
-  const [weightTouched, setWeightTouched] = useState(false);
-  const [repsTouched, setRepsTouched] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const done = props.loggedSets.length >= props.sets;
-  const started = !!props.sessionId;
-
-  const [collapsed, setCollapsed] = useState(false);
-  const [replacing, setReplacing] = useState(false);
-
-  // Auto-collapse when exercise becomes done
-  useEffect(() => {
-    if (done) setCollapsed(true);
-  }, [done]);
-
-  // Pre-fill the next set's inputs with the suggested weight/reps (usually last time's
-  // numbers) as real, editable values — so the user can just tap Log, or type over them.
-  // Only when real history exists for this exercise; otherwise leave both blank rather
-  // than guessing a rep target out of thin air.
-  useEffect(() => {
-    if (props.isCardio || weightTouched || !previous) return;
-    setWeight(suggestion.weight != null ? String(Math.min(suggestion.weight, MAX_WEIGHT_KG)) : "");
-  }, [props.isCardio, suggestion.weight, weightTouched, previous]);
-
-  useEffect(() => {
-    if (props.isCardio || repsTouched || !previous) return;
-    setReps(suggestion.reps != null ? String(suggestion.reps) : "");
-  }, [props.isCardio, suggestion.reps, repsTouched, previous]);
-
-  function handleWeightChange(raw: string) {
-    const num = Number(raw);
-    if (raw !== "" && Number.isFinite(num) && num > MAX_WEIGHT_KG) return;
-    setWeight(raw);
-    setWeightTouched(true);
-  }
-
-  async function submit() {
-    if (!props.userId || !props.exerciseSessionId) return;
-    if (done) return;
-
-    const finalWeight = props.isCardio
-      ? null
-      : weight
-        ? Math.min(Number(weight), MAX_WEIGHT_KG)
-        : (suggestion.weight ?? null);
-    const finalReps = reps ? Number(reps) : (suggestion.reps ?? null);
-
-    if (finalReps === null || (!props.isCardio && finalWeight === null)) {
-      toast.error("Please enter weight and reps");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      qc.setQueryData(["session", props.sessionId], (old: any) => {
-        if (!old) return old;
-        return {
-          ...old,
-          sets: [
-            ...old.sets,
-            {
-              id: "temp-" + Date.now(),
-              exercise_id: props.exerciseId,
-              exercise_session_id: props.exerciseSessionId,
-              set_number: nextSetNumber,
-              weight_kg: finalWeight,
-              reps: finalReps,
-            },
-          ],
-        };
-      });
-      // Let the pre-fill effects populate the next set's inputs from its own suggestion,
-      // rather than clearing to blank.
-      setWeightTouched(false);
-      setRepsTouched(false);
-
-      // Unblock UI immediately
-      setIsSubmitting(false);
-
-      // Haptic feedback on mobile
-      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(10);
-      props.onLogged();
-
-      // Fire and forget the API call
-      logSet({
-        userId: props.userId,
-        exerciseSessionId: props.exerciseSessionId,
-        exerciseId: props.exerciseId,
-        setNumber: nextSetNumber,
-        weight: finalWeight,
-        reps: finalReps,
-        rir: null,
-      }).catch((e: any) => {
-        console.error(e);
-        toast.error("Failed to log set");
-        qc.invalidateQueries({ queryKey: ["session", props.sessionId] });
-      });
-    } catch (e: any) {
-      toast.error("An unexpected error occurred");
-      setIsSubmitting(false);
-    }
-  }
-
-  function removeSet(id: string) {
-    const isTemp = id.startsWith("temp-");
-    qc.setQueryData(["session", props.sessionId], (old: any) => {
-      if (!old) return old;
-      return { ...old, sets: old.sets.filter((s: any) => s.id !== id) };
-    });
-    // Deliberately not calling props.onLogged() here: it invalidates the session query,
-    // and since deleteSet() below is fire-and-forget, a refetch could resolve before the
-    // DELETE actually commits — reverting this optimistic removal with stale server data
-    // that still includes the set, silently leaving the exercise "done" again so the
-    // next Log click on the edited row no-ops. The optimistic cache write above is
-    // already correct; only reconcile from the server if the delete actually fails.
-    // (It also makes no sense to pop the rest timer just from an undo/edit.)
-    if (!isTemp) {
-      deleteSet(id).catch((e: any) => {
-        console.error(e);
-        toast.error("Failed to remove set");
-        qc.invalidateQueries({ queryKey: ["session", props.sessionId] });
-      });
-    }
-  }
-
-  function editSet(set: any) {
-    // Mark touched so the suggestion pre-fill doesn't overwrite the values being edited.
-    if (set.weight_kg) {
-      setWeight(String(Math.min(set.weight_kg, MAX_WEIGHT_KG)));
-      setWeightTouched(true);
-    }
-    if (set.reps) {
-      setReps(String(set.reps));
-      setRepsTouched(true);
-    }
-    removeSet(set.id);
-  }
-
-  const cardBg = done ? "oklch(0.92 0.25 110 / 10%)" : "oklch(0.11 0.004 250)";
-  const cardBorder = done ? "oklch(0.92 0.25 110 / 60%)" : "oklch(0.27 0.005 250)";
-
-  const subtitle = props.isCardio
-    ? props.repRange
-    : `${props.sets} × ${props.repRange}${props.rir ? ` · RIR ${props.rir}` : ""}${props.restNote ? ` · rest ${props.restNote}` : ""}`;
-
   return (
-    <div
-      style={{
-        background: cardBg,
-        border: `1px solid ${cardBorder}`,
-        borderRadius: 12,
-        padding: 16,
-      }}
-    >
-      {/* Title row */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 10,
-        }}
-      >
-        <div style={{ display: "flex", gap: 10, minWidth: 0, flex: 1 }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{props.name}</h3>
-              {done && (
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    borderRadius: 999,
-                    background: "oklch(0.92 0.25 110)",
-                    color: "oklch(0.07 0.01 110)",
-                    padding: "2px 8px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                  }}
-                >
-                  ✓ Done
-                </span>
-              )}
-            </div>
-            <p
-              style={{
-                margin: "3px 0 0",
-                fontSize: 12.5,
-                color: "oklch(0.63 0.006 250)",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {subtitle}
-            </p>
-            {props.notes && (
-              <p style={{ margin: "4px 0 0", fontSize: 12, color: "oklch(0.63 0.006 250)" }}>
-                {props.notes}
-              </p>
-            )}
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-          {done && (
-            <button
-              onClick={() => setCollapsed((v) => !v)}
-              aria-label={collapsed ? "Expand" : "Collapse"}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 7,
-                border: "none",
-                background: "transparent",
-                color: "oklch(0.63 0.006 250)",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 14,
-                transition: "transform 0.2s",
-                transform: collapsed ? "rotate(0deg)" : "rotate(180deg)",
-              }}
-            >
-              ▾
-            </button>
-          )}
-          {!done && (
-            <button
-              onClick={() => setReplacing(true)}
-              aria-label="Replace exercise"
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 7,
-                border: "none",
-                background: "transparent",
-                color: "oklch(0.63 0.006 250)",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                <path d="M3 3v5h5" />
-              </svg>
-            </button>
-          )}
-          <button
-            onClick={props.onInfo}
-            aria-label="How to perform"
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 7,
-              border: "none",
-              background: "transparent",
-              color: "oklch(0.63 0.006 250)",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <circle cx="12" cy="12" r="9" />
-              <line x1="12" y1="11" x2="12" y2="16" />
-              <circle cx="12" cy="8" r="0.5" fill="currentColor" />
-            </svg>
-          </button>
-        </div>
+    <div className="wk-end">
+      <div className="wk-end-icon">
+        <Check size={34} strokeWidth={3} />
       </div>
+      <h2>Every set handled</h2>
+      <p>
+        {props.done} logged{props.skipped ? ` · ${props.skipped} skipped` : ""}
+      </p>
+      <button type="button" className="wk-cta" onClick={props.onFinish} disabled={props.finishing}>
+        {props.finishing ? "Finishing…" : "Finish workout"}
+      </button>
+      <button
+        type="button"
+        className="wk-text-btn"
+        onClick={props.onUndo}
+        disabled={props.finishing}
+      >
+        Undo last card
+      </button>
+    </div>
+  );
+}
 
-      {/* Logging UI only appears once the workout has been started (matches design reference) */}
-      {started && (
-        <>
-          {/* Collapsed summary for done exercises */}
-          {done && collapsed && (
-            <div style={{ marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap" }}>
-              {props.loggedSets.map((s, i) => (
-                <span
-                  key={s.id}
-                  style={{
-                    fontSize: 12,
-                    color: "oklch(0.63 0.006 250)",
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  S{i + 1}: {s.weight_kg ?? "—"}kg × {s.reps ?? "—"}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Suggestion box */}
-          {!props.isCardio && !collapsed && (
-            <div
-              style={{
-                marginTop: 12,
-                borderRadius: 8,
-                background: "oklch(0.22 0.005 250 / 50%)",
-                padding: "10px 12px",
-                fontSize: 12.5,
-              }}
-            >
-              <p style={{ margin: 0, fontWeight: 600, color: "oklch(0.63 0.006 250)" }}>
-                {previous
-                  ? `Last session · ${previous.performedAt.slice(0, 10)}`
-                  : "No previous data"}
-              </p>
-              {previous && (
-                <p
-                  style={{
-                    margin: "4px 0 0",
-                    color: "oklch(0.96 0.002 250)",
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {previous.sets
-                    .map((s, i) => `Set ${i + 1} · ${s.weight_kg ?? "—"}kg × ${s.reps ?? "—"}`)
-                    .join(", ")}
+function CompletedView({
+  plan,
+  log,
+  sessionId,
+  duration,
+  onBack,
+}: {
+  plan: DayWithExercises;
+  log: Log;
+  sessionId: string | null;
+  duration: number | null;
+  onBack: () => void;
+}) {
+  const done = Object.values(log.results).filter(isDone);
+  return (
+    <div className="wk-overview page-enter">
+      <button type="button" className="wk-back" onClick={onBack}>
+        <ChevronLeft size={18} /> Back
+      </button>
+      <p className="wk-eyebrow is-accent">✓ Completed today</p>
+      <h1 className="wk-overview-title">{plan.day.focus ?? plan.day.name}</h1>
+      <p className="wk-overview-meta">
+        {duration ? `${mmss(duration)} · ` : ""}
+        {done.length} sets logged
+      </p>
+      <ol className="wk-ov-list">
+        {plan.exercises.map((we, i) => {
+          const sets = Object.entries(log.results)
+            .filter(([k, r]) => k.startsWith(`${we.id}:`) && isDone(r))
+            .map(([k, r]) => ({ n: Number(k.split(":")[1]), r: r as DoneResult }))
+            .sort((a, b) => a.n - b.n);
+          const isCardio = we.exercises.category === "cardio";
+          return (
+            <li key={we.id} className="wk-ov-item">
+              <span className="wk-ov-idx">{i + 1}</span>
+              <div className="wk-ov-text">
+                <p className="wk-ov-name">{we.exercises.name}</p>
+                <p className="wk-ov-sub">
+                  {sets.length === 0
+                    ? "Not logged"
+                    : sets
+                        .map(({ r }) =>
+                          isCardio ? `${r.reps} min` : `${fmtNum(r.weight ?? 0)}×${r.reps}`,
+                        )
+                        .join("  ·  ")}
                 </p>
-              )}
-            </div>
-          )}
-
-          {/* Cardio / Input area */}
-          {!collapsed && props.isCardio ? (
-            done ? (
-              <div
-                style={{
-                  marginTop: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <p style={{ margin: 0, fontSize: 13, color: "oklch(0.63 0.006 250)" }}>
-                  Logged: {props.loggedSets[0]?.reps} minutes
-                </p>
-                <button
-                  onClick={() => removeSet(props.loggedSets[0]!.id)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "oklch(0.92 0.25 110)",
-                    fontSize: 12,
-                    cursor: "pointer",
-                    textDecoration: "underline",
-                  }}
-                >
-                  Undo
-                </button>
               </div>
-            ) : (
-              <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                <input
-                  inputMode="numeric"
-                  placeholder="minutes"
-                  value={reps}
-                  onChange={(e) => setReps(e.target.value)}
-                  style={{
-                    height: 36,
-                    flex: 1,
-                    borderRadius: 8,
-                    border: "1px solid oklch(0.27 0.005 250)",
-                    background: "transparent",
-                    color: "inherit",
-                    padding: "0 10px",
-                    fontSize: 13,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                />
-                <button
-                  onClick={submit}
-                  disabled={!props.exerciseSessionId || isSubmitting}
-                  style={{
-                    height: 36,
-                    padding: "0 14px",
-                    borderRadius: 8,
-                    border: "none",
-                    background: "oklch(0.92 0.25 110)",
-                    color: "oklch(0.07 0.01 110)",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: isSubmitting ? "wait" : "pointer",
-                    opacity: isSubmitting ? 0.7 : 1,
-                  }}
-                >
-                  {isSubmitting ? "..." : "Log"}
-                </button>
-              </div>
-            )
-          ) : !collapsed ? (
-            <div
-              style={{
-                marginTop: 12,
-                borderRadius: 8,
-                border: "1px solid oklch(0.27 0.005 250 / 70%)",
-                overflow: "hidden",
-                userSelect: "none",
-              }}
-            >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "36px 1fr 1fr 82px",
-                  background: "oklch(0.22 0.005 250 / 40%)",
-                  padding: "6px 10px",
-                  fontSize: 10,
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                  color: "oklch(0.63 0.006 250)",
-                }}
-              >
-                <span>Set</span>
-                <span>Kg</span>
-                <span>Reps</span>
-                <span style={{ textAlign: "right" }}>Status</span>
-              </div>
-              {Array.from({ length: props.sets }).map((_, i) => {
-                const setNum = i + 1;
-                const logged = props.loggedSets.find((s) => s.set_number === setNum);
-                const isCurrent = !logged && setNum === nextSetNumber;
-                const isUpcoming = !logged && setNum > nextSetNumber;
-                const rowBg = isCurrent ? "oklch(0.22 0.005 250 / 20%)" : "transparent";
-
-                return (
-                  <div
-                    key={setNum}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "36px 1fr 1fr 82px",
-                      alignItems: "center",
-                      padding: "8px 10px",
-                      borderTop: "1px solid oklch(0.27 0.005 250 / 50%)",
-                      background: rowBg,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontVariantNumeric: "tabular-nums",
-                        color: "oklch(0.63 0.006 250)",
-                      }}
-                    >
-                      {setNum}
-                    </span>
-
-                    {logged ? (
-                      <span
-                        style={{
-                          fontSize: 13,
-                          fontVariantNumeric: "tabular-nums",
-                          color: "oklch(0.63 0.006 250)",
-                        }}
-                      >
-                        {logged.weight_kg ?? "—"}
-                      </span>
-                    ) : isCurrent ? (
-                      <input
-                        inputMode="decimal"
-                        placeholder={suggestion.weight ? String(suggestion.weight) : ""}
-                        value={weight}
-                        onChange={(e) => handleWeightChange(e.target.value)}
-                        style={{
-                          height: 30,
-                          width: 64,
-                          borderRadius: 6,
-                          border: "1px solid oklch(0.4 0.006 250)",
-                          background: "oklch(0.045 0.003 250)",
-                          color: "inherit",
-                          padding: "0 8px",
-                          fontSize: 13,
-                          fontVariantNumeric: "tabular-nums",
-                        }}
-                      />
-                    ) : (
-                      <span
-                        style={{
-                          fontSize: 13,
-                          fontVariantNumeric: "tabular-nums",
-                          color: "oklch(0.4 0.006 250)",
-                        }}
-                      >
-                        —
-                      </span>
-                    )}
-
-                    {logged ? (
-                      <span
-                        style={{
-                          fontSize: 13,
-                          fontVariantNumeric: "tabular-nums",
-                          color: "oklch(0.63 0.006 250)",
-                        }}
-                      >
-                        {logged.reps ?? "—"}
-                      </span>
-                    ) : isCurrent ? (
-                      <input
-                        inputMode="numeric"
-                        placeholder={suggestion.reps ? String(suggestion.reps) : ""}
-                        value={reps}
-                        onChange={(e) => {
-                          setReps(e.target.value);
-                          setRepsTouched(true);
-                        }}
-                        style={{
-                          height: 30,
-                          width: 56,
-                          borderRadius: 6,
-                          border: "1px solid oklch(0.4 0.006 250)",
-                          background: "oklch(0.045 0.003 250)",
-                          color: "inherit",
-                          padding: "0 8px",
-                          fontSize: 13,
-                          fontVariantNumeric: "tabular-nums",
-                        }}
-                      />
-                    ) : (
-                      <span
-                        style={{
-                          fontSize: 13,
-                          fontVariantNumeric: "tabular-nums",
-                          color: "oklch(0.4 0.006 250)",
-                        }}
-                      >
-                        —
-                      </span>
-                    )}
-
-                    {logged ? (
-                      <div
-                        style={{
-                          justifySelf: "end",
-                          display: "flex",
-                          gap: 8,
-                          alignItems: "center",
-                        }}
-                      >
-                        <button
-                          onClick={() => editSet(logged)}
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            padding: 0,
-                            fontSize: 12,
-                            color: "oklch(0.63 0.006 250)",
-                            cursor: "pointer",
-                          }}
-                          title="Edit"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          onClick={() => removeSet(logged.id)}
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            padding: 0,
-                            fontSize: 11,
-                            color: "oklch(0.92 0.25 110)",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
-                          title="Undo"
-                        >
-                          ✓ Done
-                        </button>
-                      </div>
-                    ) : isCurrent ? (
-                      <button
-                        onClick={submit}
-                        disabled={!props.exerciseSessionId || isSubmitting}
-                        style={{
-                          justifySelf: "end",
-                          height: 28,
-                          padding: "0 12px",
-                          borderRadius: 6,
-                          border: "none",
-                          background: "oklch(0.92 0.25 110)",
-                          color: "oklch(0.07 0.01 110)",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: isSubmitting ? "wait" : "pointer",
-                          opacity: isSubmitting ? 0.7 : 1,
-                        }}
-                      >
-                        {isSubmitting ? "..." : "Log"}
-                      </button>
-                    ) : (
-                      <span
-                        style={{ justifySelf: "end", fontSize: 11, color: "oklch(0.4 0.006 250)" }}
-                      >
-                        —
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-        </>
+            </li>
+          );
+        })}
+      </ol>
+      {sessionId && (
+        <div className="wk-ov-cta">
+          <Link to="/history/$id" params={{ id: sessionId }} className="wk-cta is-secondary">
+            View full log
+          </Link>
+        </div>
       )}
-      {replacing && (
-        <SubstitutionModal
-          originalExerciseId={props.exerciseId}
-          originalExerciseName={props.name}
-          onClose={() => setReplacing(false)}
-          onSelect={async (newExerciseId) => {
-            try {
-              await replaceSessionExercise(
-                props.userId!,
-                props.sessionId,
-                props.workoutExerciseId,
-                props.exerciseId,
-                newExerciseId
-              );
-              qc.invalidateQueries({ queryKey: ["day"] });
-              if (props.sessionId) {
-                qc.invalidateQueries({ queryKey: ["session", props.sessionId] });
-              }
-              setReplacing(false);
-              toast.success("Exercise replaced permanently");
-            } catch (err: any) {
-              toast.error(err.message);
-            }
-          }}
-        />
-      )}
+    </div>
+  );
+}
+
+function SummaryScreen({ summary, onDone }: { summary: Summary; onDone: () => void }) {
+  const stats = [
+    { label: "Sets", value: String(summary.sets) },
+    { label: "Volume", value: `${fmtNum(summary.volume)} kg` },
+    { label: "PRs", value: String(summary.prs), accent: true },
+    { label: "Skipped", value: String(summary.skipped) },
+  ];
+  return (
+    <div className="wk-summary">
+      <div className="wk-summary-inner">
+        <p className="wk-eyebrow is-accent">Workout complete</p>
+        <h1 className="wk-overview-title">{summary.title}</h1>
+        <p className="wk-summary-time">{summary.duration}</p>
+        <div className="wk-summary-grid">
+          {stats.map((s) => (
+            <div key={s.label} className="wk-summary-stat">
+              <p>{s.label}</p>
+              <strong className={s.accent ? "is-accent" : undefined}>{s.value}</strong>
+            </div>
+          ))}
+        </div>
+        <button type="button" className="wk-cta" onClick={onDone}>
+          Done
+        </button>
+      </div>
     </div>
   );
 }

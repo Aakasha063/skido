@@ -1852,6 +1852,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      start_workout_session: {
+        Args: { p_day_id: string; p_session_date: string; p_title: string }
+        Returns: Json
+      }
       get_leaderboard: {
         Args: { period_days?: number }
         Returns: {

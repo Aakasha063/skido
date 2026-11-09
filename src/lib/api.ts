@@ -41,99 +41,96 @@ export async function fetchDays(userId?: string, activeTemplateId?: string | nul
   }));
 }
 
+export type DayWithExercises = { day: WorkoutDay; exercises: WorkoutExercise[] };
+
+/**
+ * A day and its exercises (with the user's permanent exercise swaps applied).
+ * Day slugs are unique, so this is one nested request run in parallel with the
+ * replacements lookup, instead of the four sequential round trips it used to take.
+ */
 export async function fetchDayWithExercises(
   slug: string,
   userId?: string,
-  activeTemplateId?: string | null,
-) {
-  let query = supabase
-    .from("workout_days")
-    .select("*")
-    .eq("slug", slug);
-
+): Promise<DayWithExercises | null> {
   const validUid = typeof userId === "string" && userId.trim() ? userId.trim() : null;
-  if (validUid) {
-    query = activeTemplateId
-      ? query.or(`and(user_id.is.null,template_id.eq.${activeTemplateId}),user_id.eq.${validUid}`)
-      : query.or(`user_id.is.null,user_id.eq.${validUid}`);
-  } else {
-    query = activeTemplateId
-      ? query.is("user_id", null).eq("template_id", activeTemplateId)
-      : query.is("user_id", null);
-  }
 
-  const { data: dayRows, error } = await query;
-  if (error) throw error;
-  if (!dayRows || dayRows.length === 0) return null;
+  let dayQuery = supabase
+    .from("workout_days")
+    .select("*, workout_exercises(*, exercises(*))")
+    .eq("slug", slug)
+    .order("position", { referencedTable: "workout_exercises" });
+  dayQuery = validUid
+    ? dayQuery.or(`user_id.is.null,user_id.eq.${validUid}`)
+    : dayQuery.is("user_id", null);
 
-  // Prefer custom day for this user over system default day
-  const day = (validUid ? dayRows.find((d) => d.user_id === validUid) : null) || dayRows[0]!;
+  const [dayRes, replRes] = await Promise.all([
+    dayQuery.maybeSingle(),
+    validUid
+      ? supabase
+          .from("user_exercise_replacements")
+          .select(
+            "workout_exercise_id, replacement:exercises!user_exercise_replacements_replacement_exercise_id_fkey(*)",
+          )
+          .eq("user_id", validUid)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (dayRes.error) throw dayRes.error;
+  if (!dayRes.data) return null;
 
-  const { data: exercises, error: exErr } = await supabase
-    .from("workout_exercises")
-    .select("*, exercises(*)")
-    .eq("day_id", day.id)
-    .order("position");
-  if (exErr) throw exErr;
+  const { workout_exercises, ...day } = dayRes.data as unknown as WorkoutDay & {
+    workout_exercises: WorkoutExercise[];
+  };
+  const replacements = (replRes.data ?? []) as unknown as {
+    workout_exercise_id: string;
+    replacement: Exercise | null;
+  }[];
+  const swapByWorkoutExercise = new Map(
+    replacements.filter((r) => r.replacement).map((r) => [r.workout_exercise_id, r.replacement!]),
+  );
 
-  let finalExercises = (exercises ?? []) as WorkoutExercise[];
+  const exercises = (workout_exercises ?? []).map((we) => {
+    const swap = swapByWorkoutExercise.get(we.id);
+    return swap ? { ...we, exercise_id: swap.id, exercises: swap } : we;
+  });
 
-  if (userId && finalExercises.length > 0) {
-    const { data: replacements } = await supabase
-      .from("user_exercise_replacements")
-      .select("workout_exercise_id, replacement_exercise_id")
-      .eq("user_id", userId)
-      .in("workout_exercise_id", finalExercises.map(e => e.id));
-
-    if (replacements && replacements.length > 0) {
-      const { data: replExercises } = await supabase
-        .from("exercises")
-        .select("*")
-        .in("id", replacements.map(r => r.replacement_exercise_id));
-
-      if (replExercises) {
-        const replMap = Object.fromEntries(
-          replacements.map(r => [
-            r.workout_exercise_id, 
-            replExercises.find(ex => ex.id === r.replacement_exercise_id)
-          ])
-        );
-
-        finalExercises = finalExercises.map((ex) => {
-          if (replMap[ex.id]) {
-            return {
-              ...ex,
-              exercise_id: replMap[ex.id].id,
-              exercises: replMap[ex.id]
-            };
-          }
-          return ex;
-        });
-      }
-    }
-  }
-
-  return { day, exercises: finalExercises };
+  return { day, exercises };
 }
 
-export async function fetchActiveSession(userId: string) {
-  const { data, error } = await supabase
-    .from("workout_sessions")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("status", "in_progress")
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
-}
+/** Shared so pages can prefetch the exact query the workout screen reads. */
+export const dayQueryKey = (slug: string, userId: string | undefined) => ["day", slug, userId];
 
-/** Any live session (in_progress or completed — never abandoned) already logged today for this day. */
-export async function fetchTodaySessionForDay(userId: string, dayId: string) {
+export type LiveSet = {
+  id: string;
+  set_number: number;
+  weight_kg: number | null;
+  reps: number | null;
+  performed_at: string;
+  is_warmup: boolean;
+};
+export type LiveExerciseSession = {
+  id: string;
+  workout_exercise_id: string | null;
+  exercise_id: string;
+  sets: LiveSet[];
+};
+export type LiveSession = {
+  id: string;
+  status: string;
+  started_at: string;
+  session_date: string;
+  duration_seconds: number | null;
+  day_id: string | null;
+  exercise_sessions: LiveExerciseSession[];
+};
+
+const LIVE_SESSION_SELECT =
+  "id, status, started_at, session_date, duration_seconds, day_id, exercise_sessions(id, workout_exercise_id, exercise_id, sets(id, set_number, weight_kg, reps, performed_at, is_warmup))";
+
+/** Today's in-progress or completed (never abandoned) session for a day, with everything logged so far — one request. */
+export async function fetchTodayLiveSession(userId: string, dayId: string) {
   const { data, error } = await supabase
     .from("workout_sessions")
-    .select("*")
+    .select(LIVE_SESSION_SELECT)
     .eq("user_id", userId)
     .eq("day_id", dayId)
     .eq("session_date", todayISO())
@@ -142,99 +139,67 @@ export async function fetchTodaySessionForDay(userId: string, dayId: string) {
     .limit(1)
     .maybeSingle();
   if (error) throw error;
-  return data;
+  return data as unknown as LiveSession | null;
 }
 
-export async function startSession(params: {
-  userId: string;
-  day: WorkoutDay;
-  exercises: WorkoutExercise[];
-}) {
-  const { userId, day, exercises } = params;
+/** Maps each planned workout_exercise to this session's exercise_session row. */
+export type ExerciseSessionMap = Record<string, string>;
 
-  // Use order+limit instead of maybeSingle(): if more than one in_progress session
-  // ever accumulated for this day (e.g. an abandoned session followed by a restart),
-  // maybeSingle() would error and silently fall through to creating yet another
-  // duplicate session, orphaning whatever was already logged.
-  const { data: existingRows, error: existingErr } = await supabase
-    .from("workout_sessions")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("day_id", day.id)
-    .eq("status", "in_progress")
-    .order("started_at", { ascending: false })
-    .limit(1);
-  if (existingErr) throw existingErr;
-  const existing = existingRows?.[0];
-  if (existing) {
-    // Only treat this as a genuine continuation (e.g. a session spanning midnight)
-    // if it started recently. A session left in_progress from days/weeks ago — most
-    // likely abandoned, possibly against a since-edited exercise plan — should not be
-    // silently inherited: that carries its old logged sets into what looks like a
-    // fresh workout, corrupting the set count and can trigger a premature auto-finish.
-    const STALE_HOURS = 18;
-    const hoursSinceStart = (Date.now() - new Date(existing.started_at).getTime()) / 3_600_000;
-    if (hoursSinceStart <= STALE_HOURS) {
-      await ensureExerciseSessions(userId, existing.id, exercises);
-      // Resuming a session started on an earlier day: re-date it to today so it
-      // counts toward the current week once finished.
-      const today = todayISO();
-      if (existing.session_date !== today) {
-        await supabase
-          .from("workout_sessions")
-          .update({ session_date: today, started_at: new Date().toISOString() })
-          .eq("id", existing.id);
-        return { ...existing, session_date: today };
-      }
-      return existing;
-    }
-    await supabase.from("workout_sessions").update({ status: "abandoned" }).eq("id", existing.id);
-  }
-
-  const { data: session, error } = await supabase
-    .from("workout_sessions")
-    .insert({
-      user_id: userId,
-      day_id: day.id,
-      title: `${day.name} — ${day.focus ?? ""}`.trim(),
-      status: "in_progress",
-      session_date: todayISO(),
-    })
-    .select()
-    .single();
+/**
+ * Starts (or resumes) today's session for a day in a single round trip (see the
+ * start_workout_session database function) and returns the exercise_session id for
+ * every planned exercise, so sets can be written without further lookups.
+ */
+export async function startLiveSession(
+  day: WorkoutDay,
+): Promise<{ session: LiveSession; exerciseSessionIds: ExerciseSessionMap }> {
+  const { data, error } = await supabase.rpc("start_workout_session", {
+    p_day_id: day.id,
+    p_session_date: todayISO(),
+    p_title: `${day.name} — ${day.focus ?? ""}`.trim(),
+  });
   if (error) throw error;
-
-  await ensureExerciseSessions(userId, session.id, exercises);
-  return session;
+  const session = data as unknown as LiveSession;
+  const exerciseSessionIds: ExerciseSessionMap = {};
+  for (const es of session.exercise_sessions) {
+    if (es.workout_exercise_id) exerciseSessionIds[es.workout_exercise_id] = es.id;
+  }
+  return { session, exerciseSessionIds };
 }
 
-/** Make sure every planned exercise has a row for this session (handles plan updates). Returns whether it actually backfilled anything. */
-export async function ensureExerciseSessions(
+/**
+ * Creates any missing exercise_session rows for the planned exercises (e.g. after the
+ * plan changed) and returns the full workout_exercise → exercise_session map.
+ */
+export async function ensureExerciseSessionMap(
   userId: string,
   sessionId: string,
   exercises: WorkoutExercise[],
-) {
-  const { data: current, error } = await supabase
+  existing: Pick<LiveExerciseSession, "id" | "workout_exercise_id">[],
+): Promise<ExerciseSessionMap> {
+  const map: ExerciseSessionMap = {};
+  for (const es of existing) if (es.workout_exercise_id) map[es.workout_exercise_id] = es.id;
+
+  const missing = exercises.filter((we) => !map[we.id]);
+  if (missing.length === 0) return map;
+
+  const { data, error } = await supabase
     .from("exercise_sessions")
-    .select("workout_exercise_id")
-    .eq("session_id", sessionId);
+    .insert(
+      missing.map((we) => ({
+        user_id: userId,
+        session_id: sessionId,
+        exercise_id: we.exercise_id,
+        workout_exercise_id: we.id,
+        position: we.position,
+        target_sets: we.sets,
+        target_rep_range: we.rep_range,
+      })),
+    )
+    .select("id, workout_exercise_id");
   if (error) throw error;
-  const have = new Set((current ?? []).map((r) => r.workout_exercise_id));
-  const missing = exercises.filter((we) => !have.has(we.id));
-  if (missing.length === 0) return false;
-  const { error: esErr } = await supabase.from("exercise_sessions").insert(
-    missing.map((we) => ({
-      user_id: userId,
-      session_id: sessionId,
-      exercise_id: we.exercise_id,
-      workout_exercise_id: we.id,
-      position: we.position,
-      target_sets: we.sets,
-      target_rep_range: we.rep_range,
-    })),
-  );
-  if (esErr) throw esErr;
-  return true;
+  for (const es of data ?? []) if (es.workout_exercise_id) map[es.workout_exercise_id] = es.id;
+  return map;
 }
 
 export async function fetchSessionDetail(sessionId: string) {
@@ -277,29 +242,22 @@ export async function fetchSessionDetail(sessionId: string) {
   };
 }
 
-/** Most recent completed performance for an exercise, excluding the current session. */
-export async function fetchPreviousPerformance(params: {
-  userId: string;
-  exerciseId: string;
-  excludeExerciseSessionId?: string | undefined;
-}) {
-  const { userId, exerciseId, excludeExerciseSessionId } = params;
+/**
+ * Recent working sets for a whole day's exercises in one request (newest first) —
+ * replaces one request per exercise. Group with groupPreviousPerformance().
+ */
+export async function fetchRecentSetsForExercises(userId: string, exerciseIds: string[]) {
+  if (exerciseIds.length === 0) return [];
   const { data, error } = await supabase
     .from("sets")
-    .select("*")
+    .select("exercise_id, exercise_session_id, set_number, weight_kg, reps, performed_at")
     .eq("user_id", userId)
-    .eq("exercise_id", exerciseId)
+    .in("exercise_id", exerciseIds)
     .eq("is_warmup", false)
     .order("performed_at", { ascending: false })
-    .limit(60);
+    .limit(Math.min(1000, exerciseIds.length * 40));
   if (error) throw error;
-  const rows = (data ?? []).filter((s) => s.exercise_session_id !== excludeExerciseSessionId);
-  if (rows.length === 0) return null;
-  const groupId = rows[0]!.exercise_session_id;
-  const group = rows
-    .filter((s) => s.exercise_session_id === groupId)
-    .sort((a, b) => a.set_number - b.set_number);
-  return { performedAt: group[0]!.performed_at, sets: group };
+  return data ?? [];
 }
 
 export async function logSet(params: {
@@ -432,7 +390,7 @@ export async function replaceSessionExercise(
       workout_exercise_id: workoutExerciseId,
       original_exercise_id: originalExerciseId,
       replacement_exercise_id: newExerciseId,
-      reason,
+      reason: reason ?? null,
     }, { onConflict: "user_id,workout_exercise_id" });
 
   if (replErr) throw replErr;
@@ -596,8 +554,9 @@ export async function fetchExerciseHistory(userId: string, exerciseId: string) {
   return data ?? [];
 }
 
+/** Names only — the full rows are ~1.8 MB across the library. */
 export async function fetchExercises() {
-  const { data, error } = await supabase.from("exercises").select("*").order("name");
+  const { data, error } = await supabase.from("exercises").select("id, name").order("name");
   if (error) throw error;
   return data ?? [];
 }

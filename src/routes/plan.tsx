@@ -56,6 +56,8 @@ function PlanPage() {
   const { data: days } = useQuery({
     queryKey: ["days", user?.id, profile?.active_template_id],
     queryFn: () => fetchDays(user?.id, profile?.active_template_id),
+    // Wait for the profile so we never fetch (and flash) every plan's days first.
+    enabled: !user || profile !== undefined,
   });
   const { data: history } = useQuery({
     queryKey: ["history", user?.id],

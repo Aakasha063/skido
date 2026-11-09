@@ -8,11 +8,13 @@ import {
 
 interface RestTimerProps {
   seconds: number;
-  exerciseName?: string;
+  exerciseName?: string | undefined;
   onDismiss: () => void;
+  /** Render in the normal layout flow instead of as a fixed bar above the bottom edge. */
+  inline?: boolean;
 }
 
-export function RestTimer({ seconds, exerciseName, onDismiss }: RestTimerProps) {
+export function RestTimer({ seconds, exerciseName, onDismiss, inline = false }: RestTimerProps) {
   // Use timestamp-based countdown so locking the screen doesn't pause the timer
   const [endTime, setEndTime] = useState<number>(() => Date.now() + seconds * 1000);
   const [remaining, setRemaining] = useState<number>(seconds);
@@ -93,8 +95,14 @@ export function RestTimer({ seconds, exerciseName, onDismiss }: RestTimerProps) 
   const dashOffset = 100.5 * (1 - Math.min(1, Math.max(0, pct)));
 
   return (
-    // Positioned above the workout bottom bar
-    <div style={{ position: "fixed", left: 0, right: 0, bottom: 76, zIndex: 40, padding: "0 14px" }}>
+    // Positioned above the workout bottom bar unless rendered inline
+    <div
+      style={
+        inline
+          ? { width: "100%" }
+          : { position: "fixed", left: 0, right: 0, bottom: 76, zIndex: 40, padding: "0 14px" }
+      }
+    >
       <div
         style={{
           margin: "0 auto",

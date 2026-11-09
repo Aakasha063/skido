@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { AuthProvider } from "@/lib/auth";
 import { registerServiceWorker } from "@/lib/pwa";
+import { persistQueryCache, restoreQueryCache } from "@/lib/queryPersist";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -156,6 +157,13 @@ function RootComponent() {
   useEffect(() => {
     registerServiceWorker();
   }, []);
+
+  // Restore after hydration (not during the first render) so server and client markup
+  // match; pages are still behind the auth check at this point, so they mount warm.
+  useEffect(() => {
+    restoreQueryCache(queryClient);
+    return persistQueryCache(queryClient);
+  }, [queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>
